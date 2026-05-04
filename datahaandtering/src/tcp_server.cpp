@@ -110,27 +110,50 @@ void TcpServer::accept_loop() {
 
 void TcpServer::start_session(int client_socket) {
     std::lock_guard<std::mutex> lock(session_mutex_);
-    stop_session();
+    stop_session_locked();
+
+    if (read_thread_.joinable()) {
+        shared::log_info("tcp_server", "Joining stale read_thread before new session");
+        read_thread_.join();
+    }
+    if (write_thread_.joinable()) {
+        shared::log_info("tcp_server", "Joining stale write_thread before new session");
+        write_thread_.join();
+    }
+
     client_socket_ = client_socket;
     session_running_ = true;
+    shared::log_info("tcp_server", "Starting session threads");
     read_thread_ = std::thread(&TcpServer::read_loop, this);
     write_thread_ = std::thread(&TcpServer::write_loop, this);
 }
 
 void TcpServer::stop_session() {
-    if (!session_running_.exchange(false)) {
+    std::lock_guard<std::mutex> lock(session_mutex_);
+    stop_session_locked();
+}
+
+void TcpServer::stop_session_locked() {
+    const bool was_running = session_running_.exchange(false);
+    const bool had_socket = (client_socket_ >= 0);
+    const bool had_threads = read_thread_.joinable() || write_thread_.joinable();
+    if (!was_running && !had_socket && !had_threads) {
         return;
     }
 
     if (client_socket_ >= 0) {
         shutdown(client_socket_, SHUT_RDWR);
     }
+
+    // Wake write_loop if blocked in wait_pop.
     outbound_queue_.push(shared::make_message(shared::MessageType::Event, "datahaandtering"));
 
     if (read_thread_.joinable()) {
+        shared::log_info("tcp_server", "Joining read_thread");
         read_thread_.join();
     }
     if (write_thread_.joinable()) {
+        shared::log_info("tcp_server", "Joining write_thread");
         write_thread_.join();
     }
 
@@ -138,9 +161,12 @@ void TcpServer::stop_session() {
         close(client_socket_);
         client_socket_ = -1;
     }
+
+    shared::log_info("tcp_server", "Session stopped");
 }
 
 void TcpServer::read_loop() {
+    shared::log_info("tcp_server", "read_loop started");
     std::string buffer;
     buffer.reserve(4096);
     char chunk[1024];
@@ -148,7 +174,9 @@ void TcpServer::read_loop() {
     while (session_running_) {
         const ssize_t n = recv(client_socket_, chunk, sizeof(chunk), 0);
         if (n <= 0) {
-            if (n < 0) {
+            if (n == 0) {
+                shared::log_info("tcp_server", "Client disconnected (recv=0)");
+            } else {
                 shared::log_warn("tcp_server", "recv failed: " + std::string(std::strerror(errno)));
             }
             session_running_ = false;
@@ -172,9 +200,11 @@ void TcpServer::read_loop() {
             inbound_queue_.push(*parsed);
         }
     }
+    shared::log_info("tcp_server", "read_loop exited");
 }
 
 void TcpServer::write_loop() {
+    shared::log_info("tcp_server", "write_loop started");
     while (session_running_) {
         const auto next = outbound_queue_.wait_pop();
         if (!next.has_value()) {
@@ -190,7 +220,7 @@ void TcpServer::write_loop() {
         while (remaining > 0 && session_running_) {
             const ssize_t sent = send(client_socket_, data, remaining, 0);
             if (sent <= 0) {
-                shared::log_warn("tcp_server", "send failed, closing session");
+                shared::log_warn("tcp_server", "send failed: " + std::string(std::strerror(errno)));
                 session_running_ = false;
                 break;
             }
@@ -198,6 +228,7 @@ void TcpServer::write_loop() {
             remaining -= static_cast<std::size_t>(sent);
         }
     }
+    shared::log_info("tcp_server", "write_loop exited");
 }
 
 }  // namespace datahaandtering

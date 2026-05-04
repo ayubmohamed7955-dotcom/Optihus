@@ -29,6 +29,7 @@ private:
     void accept_loop();
     void start_session(int client_socket);
     void stop_session();
+    void stop_session_locked();
     void read_loop();
     void write_loop();
 
