@@ -12,4 +12,10 @@ target_include_directories(miljoestyring
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(miljoestyring PRIVATE optihus_shared)
+find_package(Threads REQUIRED)
+
+target_link_libraries(miljoestyring
+    PRIVATE
+        optihus_shared
+        Threads::Threads
+)

@@ -6,23 +6,29 @@
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
 
+#include <chrono>
+#include <thread>
+
 namespace miljoestyring {
 
 int App::run() {
-    shared::log(shared::LogLevel::Info, "miljoestyring", "Starting field node skeleton");
+    shared::log_info("miljoestyring", "Starting field node");
 
-    TcpClient client(std::string(shared::constants::kDataHostname), shared::constants::kTcpPort);
+    TcpClient client("192.168.0.144", shared::constants::kTcpPort);
     if (!client.connect()) {
-        shared::log(shared::LogLevel::Warn, "miljoestyring", "Could not connect to server");
+        shared::log_error("miljoestyring", "Could not connect to server");
+        return 1;
     }
 
     SensorManager sensor_manager;
     ControlManager control_manager;
-    const auto sample = sensor_manager.read_sample();
-    control_manager.evaluate(sample);
+    shared::log_info("miljoestyring", "TCP startup hello sent; running loop");
 
-    client.disconnect();
-    return 0;
+    while (true) {
+        const auto sample = sensor_manager.read_sample();
+        control_manager.evaluate(sample);
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
 }
 
 }  // namespace miljoestyring
