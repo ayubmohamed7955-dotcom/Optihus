@@ -1,0 +1,8 @@
+C:/Users/lasis/Optihus/build-windows/CMakeFiles/edit_cache.dir
+C:/Users/lasis/Optihus/build-windows/CMakeFiles/rebuild_cache.dir
+C:/Users/lasis/Optihus/build-windows/shared/CMakeFiles/optihus_shared.dir
+C:/Users/lasis/Optihus/build-windows/shared/CMakeFiles/edit_cache.dir
+C:/Users/lasis/Optihus/build-windows/shared/CMakeFiles/rebuild_cache.dir
+C:/Users/lasis/Optihus/build-windows/miljoestyring/CMakeFiles/miljoestyring.dir
+C:/Users/lasis/Optihus/build-windows/miljoestyring/CMakeFiles/edit_cache.dir
+C:/Users/lasis/Optihus/build-windows/miljoestyring/CMakeFiles/rebuild_cache.dir

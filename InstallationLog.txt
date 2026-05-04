@@ -1,0 +1,14 @@
+************************************* Invoked: Mon May 4 08:08:12 2026
+[0] Arguments: C:\Users\lasis\AppData\Local\Temp\WinGet\MSYS2.MSYS2.20260322\msys2-x86_64-20260322.exe, install, --confirm-command, --root, C:\msys64
+[4] Operations sanity check succeeded.
+[11] Using metadata cache from "C:/Users/lasis/AppData/Local/cache\\qt-installer-framework\\d75f1c19-3379-3717-ae8d-1404b51494a9"
+[11] Found 0 cached items.
+[14] Loaded control script ":/metadata/installer-config/control_js"
+[15] TargetDirectoryInUse : Error : The directory you selected already exists and contains an installation. Choose a different target for installation.
+************************************* Invoked: Mon May 4 08:09:07 2026
+[0] Arguments: C:\Users\lasis\AppData\Local\Temp\WinGet\MSYS2.MSYS2.20260322\msys2-x86_64-20260322.exe, install, --confirm-command, --root, C:\msys64
+[3] Operations sanity check succeeded.
+[6] Using metadata cache from "C:/Users/lasis/AppData/Local/cache\\qt-installer-framework\\d75f1c19-3379-3717-ae8d-1404b51494a9"
+[6] Found 0 cached items.
+[8] Loaded control script ":/metadata/installer-config/control_js"
+[8] TargetDirectoryInUse : Error : The directory you selected already exists and contains an installation. Choose a different target for installation.

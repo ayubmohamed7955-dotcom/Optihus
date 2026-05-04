@@ -19,3 +19,7 @@ target_link_libraries(miljoestyring
         optihus_shared
         Threads::Threads
 )
+
+if(WIN32)
+    target_link_libraries(miljoestyring PRIVATE ws2_32)
+endif()

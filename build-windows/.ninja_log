@@ -1,0 +1,12 @@
+# ninja log v7
+18	90	7995790119265083	miljoestyring/CMakeFiles/miljoestyring.dir/src/main.cpp.obj	df0b151dd02513a6
+39	956	7995790119487968	miljoestyring/CMakeFiles/miljoestyring.dir/src/actuator_manager.cpp.obj	a2d39313e8f62830
+34	975	7995790119420444	miljoestyring/CMakeFiles/miljoestyring.dir/src/sensor_manager.cpp.obj	1f8ed09cc24ce9e0
+45	981	7995790119545351	miljoestyring/CMakeFiles/miljoestyring.dir/src/control_manager.cpp.obj	33374419bb59a07
+10	1239	7995790119192265	shared/CMakeFiles/optihus_shared.dir/src/logger.cpp.obj	f926b13db04bfab7
+14	1763	7995790119223492	shared/CMakeFiles/optihus_shared.dir/src/time_utils.cpp.obj	b92bf1ae4dd3db54
+5	3567	7995790119140290	shared/CMakeFiles/optihus_shared.dir/src/message_codec.cpp.obj	aa2dcfbc7a5fbcfa
+23	3625	7995790119312485	miljoestyring/CMakeFiles/miljoestyring.dir/src/app.cpp.obj	df47d16d6b7ec790
+3568	3880	7995790154771522	shared/liboptihus_shared.a	ed3a4dfed5baad72
+28	4010	7995790119373748	miljoestyring/CMakeFiles/miljoestyring.dir/src/tcp_client.cpp.obj	7c14a065c26a061e
+4010	4237	7995790159176977	miljoestyring/miljoestyring.exe	bb36e046a87a6695
