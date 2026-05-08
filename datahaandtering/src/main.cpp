@@ -5,6 +5,7 @@
 #include "datahaandtering/tcp_server.hpp"
 #include "datahaandtering/telemetry_processor.hpp"
 #include "datahaandtering/tui_manager.hpp"
+#include "datahaandtering/web_ui_server.hpp"
 
 #include <array>
 #include <csignal>
@@ -70,10 +71,16 @@ int main(int argc, char** argv) {
     shared::ThreadSafeQueue<shared::MessageEnvelope> telemetry_queue;
 
     datahaandtering::TcpServer tcp_server(shared::constants::kTcpPort, inbound_queue, outbound_queue);
-    datahaandtering::TelemetryProcessor telemetry_processor(db_manager, telemetry_queue);
     datahaandtering::CommandDispatcher command_dispatcher(config_manager, db_manager, outbound_queue);
+    datahaandtering::WebUiServer web_ui_server(
+        shared::constants::kHttpUiPort,
+        tcp_server,
+        command_dispatcher
+    );
+    datahaandtering::TelemetryProcessor telemetry_processor(db_manager, telemetry_queue);
     datahaandtering::App app(
         tcp_server,
+        web_ui_server,
         telemetry_processor,
         command_dispatcher,
         inbound_queue,

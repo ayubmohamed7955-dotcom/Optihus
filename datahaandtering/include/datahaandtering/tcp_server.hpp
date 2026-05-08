@@ -24,6 +24,7 @@ public:
 
     bool start();
     void stop();
+    bool is_client_connected() const;
 
 private:
     void accept_loop();

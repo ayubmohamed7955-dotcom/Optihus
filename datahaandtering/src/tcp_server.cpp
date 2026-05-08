@@ -116,6 +116,10 @@ bool TcpServer::start() {
     return true;
 }
 
+bool TcpServer::is_client_connected() const {
+    return session_running_.load();
+}
+
 void TcpServer::stop() {
     if (!running_.exchange(false)) {
         return;

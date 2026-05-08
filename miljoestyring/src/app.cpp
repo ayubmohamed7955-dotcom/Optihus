@@ -58,9 +58,14 @@ int App::run() {
     );
 
     TcpClient client(network_cfg.host, network_cfg.port);
-    if (!client.connect()) {
-        shared::log_error("miljoestyring", "Could not connect to server");
-        return 1;
+    while (!client.connect()) {
+        shared::log_warn(
+            "miljoestyring",
+            "Could not connect to server. Retrying in "
+                + std::to_string(shared::constants::kReconnectDelaySec)
+                + " seconds"
+        );
+        std::this_thread::sleep_for(std::chrono::seconds(shared::constants::kReconnectDelaySec));
     }
 
     SensorManager sensor_manager;

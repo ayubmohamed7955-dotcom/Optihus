@@ -115,7 +115,116 @@ Tjek:
 - klient har `192.168.4.x` adresse
 - server lytter (`ss -ltnp | grep 5000`)
 
-## 9) Rapportvinkel (kort)
+## 9) Drift: skift mellem AP og almindelig Wi-Fi
+
+Brug dette når server-Pi midlertidigt skal væk fra hotspot og på et normalt Wi-Fi.
+
+Skift **fra AP til normal Wi-Fi**:
+
+```bash
+sudo nmcli con down Optihus-AP
+nmcli dev wifi rescan
+nmcli dev wifi list
+sudo nmcli con up WIFI-WIFI-WIFI
+```
+
+Skift **tilbage til AP**:
+
+```bash
+sudo nmcli con down WIFI-WIFI-WIFI
+sudo nmcli con up Optihus-AP
+```
+
+Verifikation:
+
+```bash
+nmcli dev status
+ip addr show wlan0
+ip route
+```
+
+## 10) Brugermanual (slutbruger)
+
+Denne del er til en bruger uden teknisk baggrund.
+
+### Daglig brug
+
+1. Tænd begge Raspberry Pi-enheder.
+2. Vent 1-2 minutter.
+3. Forbind din PC/laptop til Wi-Fi: `Optihus`.
+4. Start klient-/styringsprogrammet (hvis det ikke starter automatisk).
+5. Kontroller at systemet viser normal status.
+
+### Normal forventning
+
+- Systemet holder forbindelsen automatisk.
+- Målinger opdateres løbende.
+- Ved kort netværksafbrydelse forsøger systemet at genoprette forbindelsen.
+
+### Hvis noget ikke virker
+
+1. Genstart først klienten.
+2. Hvis stadig fejl: genstart begge Pi’er.
+3. Hvis stadig fejl: kontakt en developer og oplys:
+   - tidspunkt for fejl
+   - hvad du gjorde lige før fejlen
+   - om Wi-Fi `Optihus` var synligt
+
+## 11) Developer-manual (team/kollegaer)
+
+### Hurtig driftstjek
+
+På server:
+
+```bash
+ss -ltnp | grep 5000
+```
+
+På klient:
+
+```bash
+ip addr show wlan0
+ping -c 4 192.168.4.1
+```
+
+### Standard startsekvens
+
+Server:
+
+```bash
+./build/datahaandtering/datahaandtering
+```
+
+Klient:
+
+```bash
+./build/miljoestyring/miljoestyring
+```
+
+### Log-signaler der bør ses
+
+- Server:
+  - `Listening on port 5000`
+  - `Client connected: <ip>`
+- Klient:
+  - `Starting field node`
+  - `Connected and sent hello`
+
+### Typiske fejl og hurtig handling
+
+- `Could not connect to server`:
+  - tjek `miljoestyring_config.json`
+  - tjek at serveren kører
+  - tjek AP-tilslutning
+- `Dropped invalid JSON line` på server:
+  - tjek JSON-format, `type`, `source`, `ts` og newline-delimiter.
+
+### Team-regel
+
+- Ingen ændring af message-felter uden fælles kontrakt-opdatering.
+- Ingen hardcoding af server-IP i source (brug config).
+
+## 12) Rapportvinkel (kort)
 
 I rapport/demo bør I tydeligt adskille:
 

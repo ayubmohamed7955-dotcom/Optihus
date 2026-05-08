@@ -7,6 +7,7 @@ add_executable(datahaandtering
     src/command_dispatcher.cpp
     src/telemetry_processor.cpp
     src/tui_manager.cpp
+    src/web_ui_server.cpp
 )
 
 target_include_directories(datahaandtering

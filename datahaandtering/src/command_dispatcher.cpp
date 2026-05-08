@@ -14,7 +14,7 @@ CommandDispatcher::CommandDispatcher(
 )
     : config_manager_(config_manager), db_manager_(db_manager), outbound_queue_(outbound_queue) {}
 
-void CommandDispatcher::dispatch_current_config() {
+bool CommandDispatcher::dispatch_current_config() {
     const auto config = config_manager_.current_config();
     shared::CommandPayload payload;
     payload.action = "set_config";
@@ -24,26 +24,26 @@ void CommandDispatcher::dispatch_current_config() {
         {"interval_sec", config.interval_sec},
         {"emergency_stop", config.emergency_stop}
     };
-    enqueue_command(payload, "queued");
+    return enqueue_command(payload, "queued");
 }
 
-void CommandDispatcher::dispatch_emergency_stop(bool enabled) {
+bool CommandDispatcher::dispatch_emergency_stop(bool enabled) {
     shared::CommandPayload payload;
     payload.action = enabled ? "emergency_stop" : "clear_emergency_stop";
     payload.params = nlohmann::json::object();
-    enqueue_command(payload, "queued");
+    return enqueue_command(payload, "queued");
 }
 
-void CommandDispatcher::dispatch_manual_action(const std::string& action, const std::string& value) {
+bool CommandDispatcher::dispatch_manual_action(const std::string& action, const std::string& value) {
     shared::CommandPayload payload;
     payload.action = action;
     payload.params = nlohmann::json {
         {"value", value}
     };
-    enqueue_command(payload, "queued");
+    return enqueue_command(payload, "queued");
 }
 
-void CommandDispatcher::enqueue_command(
+bool CommandDispatcher::enqueue_command(
     const shared::CommandPayload& command_payload,
     const std::string& status
 ) {
@@ -63,6 +63,7 @@ void CommandDispatcher::enqueue_command(
         std::string(shared::constants::kSourceDatahaandtering),
         queued ? status : "dropped"
     );
+    return queued;
 }
 
 }  // namespace datahaandtering

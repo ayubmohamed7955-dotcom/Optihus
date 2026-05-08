@@ -17,12 +17,12 @@ public:
         shared::ThreadSafeQueue<shared::MessageEnvelope>& outbound_queue
     );
 
-    void dispatch_current_config();
-    void dispatch_emergency_stop(bool enabled);
-    void dispatch_manual_action(const std::string& action, const std::string& value);
+    bool dispatch_current_config();
+    bool dispatch_emergency_stop(bool enabled);
+    bool dispatch_manual_action(const std::string& action, const std::string& value);
 
 private:
-    void enqueue_command(const shared::CommandPayload& command_payload, const std::string& status);
+    bool enqueue_command(const shared::CommandPayload& command_payload, const std::string& status);
 
     ConfigManager& config_manager_;
     DatabaseManager& db_manager_;

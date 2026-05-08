@@ -7,12 +7,14 @@ namespace datahaandtering {
 
 App::App(
     TcpServer& tcp_server,
+    WebUiServer& web_ui_server,
     TelemetryProcessor& telemetry_processor,
     CommandDispatcher& command_dispatcher,
     shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound_queue,
     shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue
 )
     : tcp_server_(tcp_server),
+      web_ui_server_(web_ui_server),
       telemetry_processor_(telemetry_processor),
       command_dispatcher_(command_dispatcher),
       inbound_queue_(inbound_queue),
@@ -23,11 +25,16 @@ int App::run() {
         shared::log_error("datahaandtering", "Failed to start TCP server");
         return 1;
     }
+    if (!web_ui_server_.start()) {
+        shared::log_error("datahaandtering", "Failed to start browser UI server");
+        tcp_server_.stop();
+        return 1;
+    }
     telemetry_processor_.start();
 
     shared::log_info(
         "datahaandtering",
-        "Backend running. Launch TUI explicitly: ./datahaandtering --tui"
+        "Backend running. Browser UI: http://192.168.4.1:8080 (TUI optional via --tui)"
     );
 
     while (running_) {
@@ -42,6 +49,7 @@ int App::run() {
     }
 
     telemetry_processor_.stop();
+    web_ui_server_.stop();
     tcp_server_.stop();
     return 0;
 }
@@ -56,6 +64,7 @@ void App::handle_message(const shared::MessageEnvelope& message) {
     switch (message.type) {
         case shared::MessageType::Hello:
             shared::log_info("app", "Received hello. Sending active config.");
+            web_ui_server_.note_client_hello(message.ts_utc);
             command_dispatcher_.dispatch_current_config();
             break;
         case shared::MessageType::Telemetry:
