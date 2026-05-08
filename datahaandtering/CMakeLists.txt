@@ -23,3 +23,7 @@ target_link_libraries(datahaandtering
         SQLite::SQLite3
         Threads::Threads
 )
+
+if(WIN32)
+    target_link_libraries(datahaandtering PRIVATE ws2_32)
+endif()

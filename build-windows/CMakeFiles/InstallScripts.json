@@ -1,9 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Users/lasis/Optihus/build-windows/cmake_install.cmake",
-		"C:/Users/lasis/Optihus/build-windows/shared/cmake_install.cmake",
-		"C:/Users/lasis/Optihus/build-windows/miljoestyring/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

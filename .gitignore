@@ -1,1 +1,24 @@
 build/
+
+# Local CMake/Ninja build trees
+build-windows/
+build-windows-tcp/
+cmake-build-*/
+
+# CMake/Ninja generated files
+CMakeCache.txt
+CMakeFiles/
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Compiled binaries/objects
+*.exe
+*.obj
+*.o
+*.a
+*.so
+*.dll
+
+# Local runtime config overrides
+miljoestyring_config.json
