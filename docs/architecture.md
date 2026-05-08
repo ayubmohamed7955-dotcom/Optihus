@@ -1,33 +1,48 @@
-# Optihus Architecture (Phase 1 Refined)
+# Optihus Architecture
 
-## Core setup
+## System roles
 
-- One persistent TCP connection between:
-  - `datahaandtering-rpi` (server)
-  - `miljoestyring-rpi` (client)
-- Shared JSON-lines protocol (`1 JSON object per line`).
-- SQLite on Datahåndtering at `/opt/optihus/data/optihus.db`.
-- Grafana reads SQLite directly via `frser-sqlite-datasource`.
+- `datahaandtering-rpi`: central node. Runs TCP server on port `5000`, stores data in SQLite, can run TUI.
+- `miljoestyring-rpi`: field node. Runs TCP client and control loop.
 
-## Reconnect behavior
+## Network model
 
-When the client reconnects:
+- Preferred setup: fixed AP mode with server/AP IP `192.168.4.1`.
+- One persistent TCP channel between nodes.
+- Message format: JSON-lines (`1 JSON envelope per newline`).
 
-1. Client sends `hello` again.
-2. Server responds by re-sending the current active config.
+## Handshake and reconnect behavior
 
-## Timestamp standard
+Connection contract:
 
-- All protocol timestamps are ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
-- All database timestamps are stored as ISO-8601 UTC text.
+1. Client connects to server.
+2. Client sends `hello`.
+3. Server answers by sending active configuration.
 
-## TUI startup model over SSH
+Reconnect contract:
 
-Practical model for Raspberry Pi OS Lite:
+- If client reconnects, it sends `hello` again.
+- Server re-sends current active config.
 
-- Backend runs headless (`datahaandtering` process/service).
-- User opens SSH terminal to Datahåndtering.
-- User launches interactive TUI explicitly:
-  - `./datahaandtering --tui`
+## Data and timestamp conventions
 
-This model is robust and easy to explain in a report/demo.
+- Protocol `ts`: ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`)
+- SQLite timestamps: ISO-8601 UTC text
+- DB path on server: `/opt/optihus/data/optihus.db`
+
+## Startup reliability principle
+
+Goal is startup that works in any order:
+
+- User should be able to power nodes in any order.
+- System should recover automatically when network/server is ready.
+- No manual restart should be required in normal operation.
+
+## Demo/integration proof indicators
+
+A valid cross-device run must show all of:
+
+- Server listens on `:5000`
+- Client targets real server IP (not loopback)
+- Server logs real client IP
+- Socket state shows `ESTABLISHED` between two different hosts

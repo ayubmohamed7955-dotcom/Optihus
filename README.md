@@ -1,15 +1,78 @@
-# Optihus (Starter Skeleton)
+# Optihus
 
-Optihus is a two-node Raspberry Pi greenhouse project:
+Optihus is a two-node greenhouse control project built around a persistent TCP link:
 
-- `datahaandtering-rpi` (central node): TCP server, SQLite, TUI, Grafana integration.
-- `miljoestyring-rpi` (field node): TCP client, sensors, actuators, control loop.
+- `datahaandtering-rpi` (server/AP node): TCP server, SQLite, backend, optional TUI/Grafana.
+- `miljoestyring-rpi` (client node): TCP client, sensor/control loop.
 
-This repository currently contains the **Phase 2 starter skeleton**.
+This repository is intended to be cloned on both devices and built locally.
 
-## Requirements (Raspberry Pi OS Lite 64-bit)
+## Repository structure (visual)
 
-Install on both Pis:
+```text
+Optihus/
+|- README.md
+|- CMakeLists.txt
+|- .gitignore
+|- miljoestyring_config.json.example
+|- datahaandtering/
+|  |- README.md
+|  |- CMakeLists.txt
+|  |- include/
+|  `- src/
+|- miljoestyring/
+|  |- README.md
+|  |- CMakeLists.txt
+|  |- include/
+|  `- src/
+|- shared/
+|  |- README.md
+|  |- CMakeLists.txt
+|  |- include/
+|  `- src/
+|- sql/
+|  |- README.md
+|  |- init.sql
+|  `- seed_profiles.sql
+`- docs/
+   |- README.md
+   |- md-struktur.md
+   |- quickstart-for-team-da.md
+   |- integration-test-checklist-da.md
+   |- architecture.md
+   `- optihus-dokumentation-udkast.md
+```
+
+Notes:
+
+- Build output folders (like `build/`, `build-windows/`, `build-windows-tcp/`) are intentionally **not** part of the repository.
+- Use `miljoestyring_config.json.example` as the template when creating a local runtime config.
+
+## Read this first
+
+If you are new to the project, use this order:
+
+1. `docs/quickstart-for-team-da.md` (simple start/stop guide)
+2. `docs/integration-test-checklist-da.md` (how to verify TCP works)
+3. `docs/architecture.md` (technical overview)
+4. `docs/optihus-dokumentation-udkast.md` (report draft, Danish)
+
+## Current validated network mode
+
+The main demo mode is fixed AP mode:
+
+- Server AP IP: `192.168.4.1`
+- TCP port: `5000`
+- Protocol: JSON-lines (one JSON object per line)
+
+Cross-device TCP has been tested in two network scenarios:
+
+- Routed LAN (`172.16.15.x`)
+- AP LAN (`192.168.4.x`)
+
+## Requirements
+
+### Raspberry Pi (both nodes)
 
 - `build-essential`
 - `cmake`
@@ -17,10 +80,10 @@ Install on both Pis:
 - `libsqlite3-dev`
 - `nlohmann-json3-dev`
 
-Additionally on Datahåndtering:
+### Datahåndtering node only
 
 - `libncurses-dev`
-- Grafana + `frser-sqlite-datasource`
+- Grafana + `frser-sqlite-datasource` (optional for dashboards)
 
 ## Build
 
@@ -29,31 +92,55 @@ cmake -S . -B build
 cmake --build build -j4
 ```
 
-## Runtime model (realistic TUI over SSH)
+## Run (AP mode, cross-device)
 
-The simplest practical setup for Raspberry Pi OS Lite is:
-
-1. Run `datahaandtering` backend as a normal process or systemd service (non-interactive).
-2. User SSHes into `datahaandtering-rpi`.
-3. User starts TUI manually:
+### 1) Server (Datahåndtering RPi)
 
 ```bash
-./build/datahaandtering/datahaandtering --tui
+./build/datahaandtering/datahaandtering
 ```
 
-This avoids fragile auto-launch behavior in non-interactive service contexts and works reliably over SSH.
+Expected startup log includes:
 
-## Connection and reconnect rule
+- `Listening on port 5000`
 
-- Miljøstyring keeps one persistent TCP connection to Datahåndtering (`port 5000`).
-- On reconnect:
-  - client re-sends `hello`
-  - server re-sends current `active_config`
+### 2) Client (Miljøstyring node)
 
-## Timestamps
+Set `miljoestyring_config.json` so `server_host` points to server AP IP `192.168.4.1`, then run:
 
-- Protocol messages use `ts` in ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
-- SQLite timestamps are stored as ISO-8601 UTC text in all tables.
+```bash
+./build/miljoestyring/miljoestyring
+```
+
+or on Windows:
+
+```powershell
+.\build-windows-tcp\miljoestyring\miljoestyring.exe
+```
+
+Expected client log includes:
+
+- `Connected and sent hello to 192.168.4.1:5000`
+
+Expected server log includes:
+
+- `Client connected: 192.168.4.x`
+- `Received hello. Sending active config.`
+
+## Boot reliability rule
+
+The system should be user-friendly and startup-order tolerant:
+
+- User can power nodes in any order.
+- Client must auto-recover/reconnect when server/AP becomes available.
+- No manual process restart should be required during normal startup.
+
+This is checked in the integration test checklist.
+
+## Timestamps and data format
+
+- Protocol timestamps: ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`)
+- SQLite timestamps: ISO-8601 UTC text
 
 ## SQL setup
 
@@ -64,10 +151,18 @@ sqlite3 /opt/optihus/data/optihus.db < sql/init.sql
 sqlite3 /opt/optihus/data/optihus.db < sql/seed_profiles.sql
 ```
 
-Schema includes:
+Core tables:
 
 - `telemetry`
 - `system_events`
 - `profiles`
 - `active_config`
 - `command_history`
+
+## Documentation map
+
+- Main docs index: `docs/README.md`
+- Technical architecture: `docs/architecture.md`
+- Danish operations/report draft: `docs/optihus-dokumentation-udkast.md`
+- Non-technical quick guide (Danish): `docs/quickstart-for-team-da.md`
+- Integration checklist (Danish): `docs/integration-test-checklist-da.md`

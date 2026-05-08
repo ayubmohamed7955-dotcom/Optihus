@@ -1,96 +1,41 @@
 # Optihus - Dokumentationsudkast
 
-Dette dokument er et samlet udkast til rapport og driftshåndbog for Optihus.
+Dette dokument er et praktisk udkast til rapport og drift for Optihus.
+Fokus er stabil drift, tydelig rollefordeling og enkel fejlsøgning.
 
-## 1) Projektbeskrivelse
+## 1) Projekt og mål
 
-Optihus er et lokalt, distribueret drivhusstyringssystem bygget på to Raspberry Pi-enheder:
+Optihus består af to noder:
 
-- **Datahåndtering (AP/server-node)**: hotspot, TCP-server, SQLite, TUI, visualisering.
-- **Miljøstyring (klient-node)**: forbinder til hotspot, sender telemetri, modtager kommandoer, styrer sensorer/aktuatorer.
+- **Datahåndtering (server/AP-node)**: TCP-server, database og central styring.
+- **Miljøstyring (klient-node)**: TCP-klient og kontrol-loop.
 
-Formålet er robust lokal drift uden cloud-afhængighed.
+Målet er lokal, robust kommunikation mellem noderne uden cloud-afhængighed.
 
-## 2) Softwarearkitektur
+## 2) Kommunikationsmodel
 
-| Lag | Ansvar | Centrale filer |
-|---|---|---|
-| Shared | Fælles kontrakter, JSON line codec, tid, logging | `shared/include/shared/*`, `shared/src/message_codec.cpp` |
-| Datahåndtering | TCP-server, DB, command dispatch, TUI | `datahaandtering/src/main.cpp`, `app.cpp`, `tcp_server.cpp`, `database_manager.cpp`, `command_dispatcher.cpp` |
-| Miljøstyring | TCP-klient, sensorlæsning (stub), kontrol-loop | `miljoestyring/src/main.cpp`, `app.cpp`, `tcp_client.cpp`, `sensor_manager.cpp`, `control_manager.cpp` |
+- Transport: TCP
+- Port: `5000`
+- Protokol: JSON-lines (én JSON-besked pr. linje)
+- Normal handshake:
+  1. klient forbinder
+  2. klient sender `hello`
+  3. server svarer med aktiv konfiguration
 
-## 3) Netværksarkitektur
+## 3) Valideret netværkssetup
 
-### Topologi
+Primær driftsmode er AP på serveren:
 
-- AP/server Pi: hoster Wi-Fi AP og TCP-server.
-- Klient Pi: auto-connect til AP og opretter TCP-klientforbindelse.
+- Server/AP IP: `192.168.4.1`
+- Klient får AP-adresse i `192.168.4.x`
 
-### Aftalte netværksparametre
+Cross-device test er valideret med:
 
-| Felt | Værdi |
-|---|---|
-| SSID | `Optihus` |
-| WPA2-password | `OptihuS123` |
-| AP IP | `192.168.4.1/24` |
-| TCP-port | `5000` |
+- server-log med reel klient-IP (ikke loopback)
+- klient-log med connect til reel server-IP
+- `ESTABLISHED` socket-state mellem to forskellige hosts
 
-### Designprincip
-
-- Systemet skal fungere lokalt uden internet.
-- TCP bruges som én persistent kanal med newline-delimiterede JSON-beskeder.
-
-## 4) Installationsguide - Windows (miljoestyring)
-
-Forudsætning: MSYS2 UCRT64 + CMake + Ninja + `nlohmann_json`.
-
-```powershell
-cmake -S . -B build-windows -G Ninja `
-  -DOPTIHUS_BUILD_DATAHAANDTERING=OFF `
-  -DOPTIHUS_BUILD_MILJOESTYRING=ON `
-  -DCMAKE_CXX_COMPILER=C:/msys64/ucrt64/bin/g++.exe
-
-cmake --build build-windows --target miljoestyring
-```
-
-Kørsel:
-
-```powershell
-.\build-windows\miljoestyring\miljoestyring.exe
-```
-
-## 5) Installationsguide - Raspberry Pi
-
-### AP/server Pi (Datahåndtering)
-
-```bash
-sudo nmcli con add type wifi ifname wlan0 con-name Optihus-AP autoconnect yes ssid Optihus
-sudo nmcli con modify Optihus-AP 802-11-wireless.mode ap 802-11-wireless.band bg
-sudo nmcli con modify Optihus-AP ipv4.addresses 192.168.4.1/24
-sudo nmcli con modify Optihus-AP ipv4.method shared
-sudo nmcli con modify Optihus-AP ipv6.method ignore
-sudo nmcli con modify Optihus-AP wifi-sec.key-mgmt wpa-psk
-sudo nmcli con modify Optihus-AP wifi-sec.psk "OptihuS123"
-sudo nmcli con up Optihus-AP
-```
-
-### Klient Pi (Miljøstyring)
-
-```bash
-sudo nmcli dev wifi connect "Optihus" password "OptihuS123" ifname wlan0
-sudo nmcli con modify "Optihus" connection.autoconnect yes connection.autoconnect-priority 100
-```
-
-Verifikation:
-
-```bash
-sudo nmcli dev status
-ip addr show wlan0
-ip route
-ping -c 4 192.168.4.1
-```
-
-## 6) Byggeguide
+## 4) Build og kørsel
 
 ### Raspberry Pi
 
@@ -99,83 +44,83 @@ cmake -S . -B build
 cmake --build build -j4
 ```
 
-### Kun Datahåndtering
+Server:
 
 ```bash
-cmake -S . -B build -DOPTIHUS_BUILD_MILJOESTYRING=OFF
-cmake --build build --target datahaandtering -j4
+./build/datahaandtering/datahaandtering
 ```
 
-### Kun Miljøstyring
+Klient:
 
 ```bash
-cmake -S . -B build -DOPTIHUS_BUILD_DATAHAANDTERING=OFF
-cmake --build build --target miljoestyring -j4
+./build/miljoestyring/miljoestyring
 ```
 
-## 7) Testguide
+### Windows (miljøstyring)
 
-### Basal TCP startup-test
+```powershell
+cmake -S . -B build-windows-tcp -G Ninja -DOPTIHUS_BUILD_DATAHAANDTERING=OFF -DOPTIHUS_BUILD_MILJOESTYRING=ON
+cmake --build build-windows-tcp -j4
+.\build-windows-tcp\miljoestyring\miljoestyring.exe
+```
 
-1. Start server på AP Pi:
-   - `./build/datahaandtering/datahaandtering`
-2. Start klient:
-   - `./build/miljoestyring/miljoestyring` (Pi) eller `miljoestyring.exe` (Windows)
-3. Bekræft server-log:
-   - klient connected
-   - ingen invalid JSON warning
+## 5) Konfigurationsregel for AP-mode
 
-### Funktionelle testpunkter
+På klienten skal `miljoestyring_config.json` pege på serverens AP IP:
 
-| Test | Forventning |
-|---|---|
-| Hello handshake | Server modtager `hello`, sender config-kommando |
-| Telemetri-format | JSON line med gyldig `type`, `ts`, `source` |
-| DB insert | Telemetri ender i `telemetry`-tabel |
-| TUI config ændring | `active_config` opdateres i DB |
+```json
+{
+  "server_host": "192.168.4.1",
+  "server_port": 5000
+}
+```
 
-## 8) Fejlsøgningsguide
+Hvis `127.0.0.1` bruges, bliver testen kun lokal loopback og ikke cross-device.
 
-| Problem | Typisk årsag | Handling |
-|---|---|---|
-| `Dropped invalid JSON line` | Forkert `ts` format eller manglende felt | Brug `YYYY-MM-DDTHH:MM:SSZ`, medtag `type`/`source` |
-| Ingen TCP-forbindelse | Forkert IP/port eller AP ikke aktiv | Verificér `ip a`, `nmcli`, ping AP IP |
-| Server abort ved connect | Thread-lifecycle-fejl | Brug opdateret `tcp_server.cpp` med sikker join/stop |
-| Windows build fejler med generator | VS/MSVC mangler | Brug Ninja + MSYS2 UCRT64 eller installer VS Build Tools |
+## 6) Boot-reliability princip
 
-## 9) Team-kontrakt (sensorer, aktuatorer, beskeder)
+Brugeroplevelsen skal være startup-order tolerant:
 
-### Sensorer og enheder
+- Noder må gerne starte i vilkårlig rækkefølge.
+- Systemet skal selv komme i stabil forbindelse uden manuel procesrestart.
+- Dette verificeres med faste acceptkriterier i integrationstest.
 
-| Felt | Betydning | Enhed |
-|---|---|---|
-| `humidity_air` | Luftfugtighed | `%RH` |
-| `humidity_soil` | Jordfugtighed | `%` (kalibreret) |
-| `temperature_air` | Lufttemperatur | `degC` |
+## 7) Acceptance criteria (integration)
 
-### Aktuatorer
+En test anses som bestået når alle punkter er opfyldt:
 
-| Felt | Gyldige værdier |
-|---|---|
-| `pump_status` | `off`, `on` |
-| `motor_status` | `closed`, `open`, `opening`, `closing`, `stopped` |
+- server lytter på `:5000`
+- klient forbinder til reel server-IP
+- server logger reel klient-IP
+- socket viser `ESTABLISHED` mellem to forskellige hosts
+- ingen manuel restart nødvendig i normal startup
 
-### Beskeder (obligatoriske envelope-felter)
+## 8) Kort fejlsøgningsguide
 
-| Felt | Krav |
-|---|---|
-| `type` | lowercase enum (`hello`, `telemetry`, `command`, ...) |
-| `ts` | ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`) |
-| `source` | `datahaandtering` eller `miljoestyring` |
+### `connect() failed: 10061` (Windows klient)
 
-## 10) Fremtidige forbedringer
+Typisk årsag: forkert `server_host` eller server ikke aktiv.
 
-1. Implementér rigtig sensor-driver (erstat nuværende stub-værdier).
-2. Tilføj temperatur til shared kontrakt + DB schema + Grafana dashboards.
-3. Implementér fuld klient-side protokol:
-   - telemetri-sending
-   - command receiver
-   - heartbeat.
-4. Flyt netværkskonfig til robust runtime-config på begge Pi’er.
-5. Tilføj integrationstests for JSON kontrakt og socket-flow.
+Tjek:
+
+1. Kører `datahaandtering`?
+2. Er klient sat til server-IP (fx `192.168.4.1`)?
+3. Er porten stadig `5000`?
+
+### Forbindelse opstår ikke i AP-mode
+
+Tjek:
+
+- klient er koblet på AP
+- klient har `192.168.4.x` adresse
+- server lytter (`ss -ltnp | grep 5000`)
+
+## 9) Rapportvinkel (kort)
+
+I rapport/demo bør I tydeligt adskille:
+
+- lokal proof-of-life (loopback)
+- reel cross-device verifikation (to forskellige IP-adresser + `ESTABLISHED`)
+
+Det styrker fagligheden i netværksdelen markant.
 
