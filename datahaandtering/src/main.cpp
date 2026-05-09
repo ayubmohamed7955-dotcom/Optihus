@@ -75,7 +75,9 @@ int main(int argc, char** argv) {
     datahaandtering::WebUiServer web_ui_server(
         shared::constants::kHttpUiPort,
         tcp_server,
-        command_dispatcher
+        command_dispatcher,
+        config_manager,
+        db_manager
     );
     datahaandtering::TelemetryProcessor telemetry_processor(db_manager, telemetry_queue);
     datahaandtering::App app(

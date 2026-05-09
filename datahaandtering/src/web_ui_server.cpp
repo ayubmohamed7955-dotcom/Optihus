@@ -3,7 +3,10 @@
 #include <array>
 #include <algorithm>
 #include <cstddef>
+#include <sstream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #if defined(_WIN32)
@@ -19,6 +22,7 @@
 #endif
 
 #include "shared/logger.hpp"
+#include "shared/types.hpp"
 #include "shared/time_utils.hpp"
 
 namespace datahaandtering {
@@ -42,10 +46,72 @@ void close_socket(int socket_fd) {
 #endif
 }
 
+std::unordered_map<std::string, std::string> parse_query(std::string_view request_line) {
+    std::unordered_map<std::string, std::string> out;
+    const std::size_t q = request_line.find('?');
+    if (q == std::string_view::npos) {
+        return out;
+    }
+    const std::size_t end = request_line.find(' ', q);
+    if (end == std::string_view::npos || end <= q + 1) {
+        return out;
+    }
+    const std::string query(request_line.substr(q + 1, end - (q + 1)));
+    std::size_t start = 0;
+    while (start < query.size()) {
+        const std::size_t amp = query.find('&', start);
+        const std::size_t item_end = (amp == std::string::npos) ? query.size() : amp;
+        const std::size_t eq = query.find('=', start);
+        if (eq != std::string::npos && eq < item_end) {
+            out[query.substr(start, eq - start)] = query.substr(eq + 1, item_end - (eq + 1));
+        }
+        start = item_end + 1;
+    }
+    return out;
+}
+
+std::string json_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '"':
+                out += "\\\"";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                out.push_back(c);
+                break;
+        }
+    }
+    return out;
+}
+
 }  // namespace
 
-WebUiServer::WebUiServer(int port, TcpServer& tcp_server, CommandDispatcher& command_dispatcher)
-    : port_(port), tcp_server_(tcp_server), command_dispatcher_(command_dispatcher) {}
+WebUiServer::WebUiServer(
+    int port,
+    TcpServer& tcp_server,
+    CommandDispatcher& command_dispatcher,
+    ConfigManager& config_manager,
+    DatabaseManager& db_manager
+)
+    : port_(port),
+      tcp_server_(tcp_server),
+      command_dispatcher_(command_dispatcher),
+      config_manager_(config_manager),
+      db_manager_(db_manager) {}
 
 WebUiServer::~WebUiServer() {
     stop();
@@ -184,6 +250,12 @@ void WebUiServer::handle_client(int client_socket) {
     std::string status_line = "HTTP/1.1 200 OK\r\n";
     if (request_line.rfind("GET /api/status ", 0) == 0) {
         body = build_status_json();
+    } else if (request_line.rfind("GET /api/config ", 0) == 0
+        || request_line.rfind("POST /api/config", 0) == 0) {
+        handle_config_request(request_line, status_line, body, content_type);
+    } else if (request_line.rfind("GET /api/profiles ", 0) == 0
+        || request_line.rfind("POST /api/profiles/upsert", 0) == 0) {
+        handle_profiles_request(request_line, status_line, body, content_type);
     } else if (request_line.rfind("POST /api/control/", 0) == 0) {
         if (!handle_control_request(request_line, status_line, body, content_type)) {
             status_line = "HTTP/1.1 400 Bad Request\r\n";
@@ -238,6 +310,117 @@ bool WebUiServer::handle_control_request(
     return true;
 }
 
+bool WebUiServer::handle_config_request(
+    const std::string& request_line,
+    std::string& status_line,
+    std::string& body,
+    std::string& content_type
+) {
+    content_type = "application/json; charset=utf-8";
+    if (request_line.rfind("GET /api/config ", 0) == 0) {
+        body = build_config_json();
+        return true;
+    }
+
+    if (request_line.rfind("POST /api/config", 0) == 0) {
+        const auto query = parse_query(request_line);
+        bool changed = false;
+        if (const auto it = query.find("mode"); it != query.end()) {
+            const auto mode = shared::mode_from_string(it->second);
+            if (mode.has_value()) {
+                config_manager_.set_mode(*mode);
+                changed = true;
+            }
+        }
+        if (const auto it = query.find("profile"); it != query.end() && !it->second.empty()) {
+            config_manager_.set_profile_name(it->second);
+            changed = true;
+        }
+        if (const auto it = query.find("interval"); it != query.end()) {
+            try {
+                config_manager_.set_interval_sec(std::stoi(it->second));
+                changed = true;
+            } catch (...) {
+                status_line = "HTTP/1.1 400 Bad Request\r\n";
+                body = "{\"error\":\"invalid interval\"}\n";
+                return true;
+            }
+        }
+        if (const auto it = query.find("emergency"); it != query.end()) {
+            const bool enabled = (it->second == "1" || it->second == "true");
+            config_manager_.set_emergency_stop(enabled);
+            changed = true;
+        }
+
+        if (changed) {
+            const bool saved = config_manager_.save_active_config();
+            const bool queued = command_dispatcher_.dispatch_current_config();
+            note_control_result("set_config", queued);
+            body = std::string("{\"ok\":")
+                + (saved ? "true" : "false")
+                + ",\"saved\":"
+                + (saved ? "true" : "false")
+                + ",\"queued\":"
+                + (queued ? "true" : "false")
+                + "}\n";
+            return true;
+        }
+        status_line = "HTTP/1.1 400 Bad Request\r\n";
+        body = "{\"error\":\"no valid config fields\"}\n";
+        return true;
+    }
+
+    status_line = "HTTP/1.1 405 Method Not Allowed\r\n";
+    body = "{\"error\":\"method not allowed\"}\n";
+    return true;
+}
+
+bool WebUiServer::handle_profiles_request(
+    const std::string& request_line,
+    std::string& status_line,
+    std::string& body,
+    std::string& content_type
+) {
+    content_type = "application/json; charset=utf-8";
+    if (request_line.rfind("GET /api/profiles ", 0) == 0) {
+        body = build_profiles_json();
+        return true;
+    }
+    if (request_line.rfind("POST /api/profiles/upsert", 0) == 0) {
+        const auto query = parse_query(request_line);
+        shared::Profile p;
+        if (const auto it = query.find("name"); it != query.end()) {
+            p.name = it->second;
+        }
+        if (const auto it = query.find("crop"); it != query.end()) {
+            p.crop_type = it->second;
+        }
+        if (p.name.empty() || p.crop_type.empty()) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"name and crop required\"}\n";
+            return true;
+        }
+        try {
+            p.min_humidity_air = std::stod(query.at("min_air"));
+            p.max_humidity_air = std::stod(query.at("max_air"));
+            p.min_humidity_soil = std::stod(query.at("min_soil"));
+            p.max_humidity_soil = std::stod(query.at("max_soil"));
+            p.interval_sec = std::stoi(query.at("interval"));
+        } catch (...) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"invalid numeric profile field\"}\n";
+            return true;
+        }
+        p.is_default = false;
+        const bool ok = db_manager_.upsert_profile(p, shared::now_utc_iso8601());
+        body = std::string("{\"ok\":") + (ok ? "true" : "false") + "}\n";
+        return true;
+    }
+    status_line = "HTTP/1.1 405 Method Not Allowed\r\n";
+    body = "{\"error\":\"method not allowed\"}\n";
+    return true;
+}
+
 void WebUiServer::note_control_result(std::string action, bool queued) {
     std::lock_guard<std::mutex> lock(status_mutex_);
     last_control_action_ = std::move(action);
@@ -287,6 +470,40 @@ std::string WebUiServer::build_status_json() const {
            "}\n";
 }
 
+std::string WebUiServer::build_config_json() const {
+    const auto cfg = config_manager_.current_config();
+    return "{\n"
+           "  \"mode\": \"" + shared::to_string(cfg.mode) + "\",\n"
+           "  \"profile_name\": \"" + json_escape(cfg.profile_name) + "\",\n"
+           "  \"interval_sec\": " + std::to_string(cfg.interval_sec) + ",\n"
+           "  \"emergency_stop\": " + std::string(cfg.emergency_stop ? "true" : "false") + "\n"
+           "}\n";
+}
+
+std::string WebUiServer::build_profiles_json() const {
+    const auto profiles = db_manager_.list_profiles();
+    std::ostringstream oss;
+    oss << "[\n";
+    for (std::size_t i = 0; i < profiles.size(); ++i) {
+        const auto& p = profiles[i];
+        oss << "  {\n"
+            << "    \"name\": \"" << json_escape(p.name) << "\",\n"
+            << "    \"crop_type\": \"" << json_escape(p.crop_type) << "\",\n"
+            << "    \"min_humidity_air\": " << p.min_humidity_air << ",\n"
+            << "    \"max_humidity_air\": " << p.max_humidity_air << ",\n"
+            << "    \"min_humidity_soil\": " << p.min_humidity_soil << ",\n"
+            << "    \"max_humidity_soil\": " << p.max_humidity_soil << ",\n"
+            << "    \"interval_sec\": " << p.interval_sec << "\n"
+            << "  }";
+        if (i + 1 < profiles.size()) {
+            oss << ",";
+        }
+        oss << "\n";
+    }
+    oss << "]\n";
+    return oss.str();
+}
+
 std::string WebUiServer::build_index_html() {
     return "<!doctype html>\n"
            "<html lang=\"en\">\n"
@@ -306,6 +523,27 @@ std::string WebUiServer::build_index_html() {
            "  <p class=\"muted\">Minimal browser skeleton running on datahaandtering-rpi.</p>\n"
            "  <h2>Status</h2>\n"
            "  <pre id=\"status\">Loading...</pre>\n"
+           "  <h2>Active config</h2>\n"
+           "  <pre id=\"config\">Loading...</pre>\n"
+           "  <p>\n"
+           "    Mode: <select id=\"mode\"><option value=\"auto\">auto</option><option value=\"manual\">manual</option></select>\n"
+           "    Profile: <input id=\"profile\" placeholder=\"tomato\">\n"
+           "    Interval: <input id=\"interval\" type=\"number\" min=\"1\" value=\"900\" style=\"width:90px\">\n"
+           "    Emergency: <select id=\"emergency\"><option value=\"0\">off</option><option value=\"1\">on</option></select>\n"
+           "    <button onclick=\"saveConfig()\">Save config</button>\n"
+           "  </p>\n"
+           "  <h2>Profiles</h2>\n"
+           "  <pre id=\"profiles\">Loading...</pre>\n"
+           "  <p>\n"
+           "    Name: <input id=\"p_name\" placeholder=\"custom1\" style=\"width:90px\">\n"
+           "    Crop: <input id=\"p_crop\" placeholder=\"Custom\" style=\"width:90px\">\n"
+           "    Min air: <input id=\"p_min_air\" type=\"number\" step=\"0.1\" value=\"50\" style=\"width:70px\">\n"
+           "    Max air: <input id=\"p_max_air\" type=\"number\" step=\"0.1\" value=\"70\" style=\"width:70px\">\n"
+           "    Min soil: <input id=\"p_min_soil\" type=\"number\" step=\"0.1\" value=\"30\" style=\"width:70px\">\n"
+           "    Max soil: <input id=\"p_max_soil\" type=\"number\" step=\"0.1\" value=\"55\" style=\"width:70px\">\n"
+           "    Interval: <input id=\"p_interval\" type=\"number\" min=\"1\" value=\"900\" style=\"width:80px\">\n"
+           "    <button onclick=\"saveProfile()\">Save profile</button>\n"
+           "  </p>\n"
            "  <h2>Controls</h2>\n"
            "  <p>\n"
            "    <button onclick=\"sendControl('/api/control/emergency-stop?enabled=1')\">Emergency stop</button>\n"
@@ -323,6 +561,47 @@ std::string WebUiServer::build_index_html() {
            "        document.getElementById('status').textContent = 'Status unavailable: ' + e;\n"
            "      }\n"
            "    }\n"
+           "    async function loadConfig() {\n"
+           "      try {\n"
+           "        const res = await fetch('/api/config');\n"
+           "        const json = await res.json();\n"
+           "        document.getElementById('config').textContent = JSON.stringify(json, null, 2);\n"
+           "        document.getElementById('mode').value = json.mode || 'auto';\n"
+           "        document.getElementById('profile').value = json.profile_name || '';\n"
+           "        document.getElementById('interval').value = json.interval_sec || 900;\n"
+           "        document.getElementById('emergency').value = json.emergency_stop ? '1' : '0';\n"
+           "      } catch (e) {\n"
+           "        document.getElementById('config').textContent = 'Config unavailable: ' + e;\n"
+           "      }\n"
+           "    }\n"
+           "    async function loadProfiles() {\n"
+           "      try {\n"
+           "        const res = await fetch('/api/profiles');\n"
+           "        const json = await res.json();\n"
+           "        document.getElementById('profiles').textContent = JSON.stringify(json, null, 2);\n"
+           "      } catch (e) {\n"
+           "        document.getElementById('profiles').textContent = 'Profiles unavailable: ' + e;\n"
+           "      }\n"
+           "    }\n"
+           "    async function saveConfig() {\n"
+           "      const mode = encodeURIComponent(document.getElementById('mode').value);\n"
+           "      const profile = encodeURIComponent(document.getElementById('profile').value);\n"
+           "      const interval = encodeURIComponent(document.getElementById('interval').value);\n"
+           "      const emergency = encodeURIComponent(document.getElementById('emergency').value);\n"
+           "      await sendControl(`/api/config?mode=${mode}&profile=${profile}&interval=${interval}&emergency=${emergency}`);\n"
+           "      await loadConfig();\n"
+           "    }\n"
+           "    async function saveProfile() {\n"
+           "      const name = encodeURIComponent(document.getElementById('p_name').value);\n"
+           "      const crop = encodeURIComponent(document.getElementById('p_crop').value);\n"
+           "      const min_air = encodeURIComponent(document.getElementById('p_min_air').value);\n"
+           "      const max_air = encodeURIComponent(document.getElementById('p_max_air').value);\n"
+           "      const min_soil = encodeURIComponent(document.getElementById('p_min_soil').value);\n"
+           "      const max_soil = encodeURIComponent(document.getElementById('p_max_soil').value);\n"
+           "      const interval = encodeURIComponent(document.getElementById('p_interval').value);\n"
+           "      await sendControl(`/api/profiles/upsert?name=${name}&crop=${crop}&min_air=${min_air}&max_air=${max_air}&min_soil=${min_soil}&max_soil=${max_soil}&interval=${interval}`);\n"
+           "      await loadProfiles();\n"
+           "    }\n"
            "    async function sendControl(url) {\n"
            "      const target = document.getElementById('control');\n"
            "      target.textContent = 'Sending...';\n"
@@ -336,7 +615,11 @@ std::string WebUiServer::build_index_html() {
            "      }\n"
            "    }\n"
            "    loadStatus();\n"
+           "    loadConfig();\n"
+           "    loadProfiles();\n"
            "    setInterval(loadStatus, 2000);\n"
+           "    setInterval(loadConfig, 5000);\n"
+           "    setInterval(loadProfiles, 10000);\n"
            "  </script>\n"
            "</body>\n"
            "</html>\n";

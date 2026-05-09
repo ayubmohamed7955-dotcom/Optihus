@@ -7,13 +7,21 @@
 #include <thread>
 
 #include "datahaandtering/command_dispatcher.hpp"
+#include "datahaandtering/config_manager.hpp"
+#include "datahaandtering/database_manager.hpp"
 #include "datahaandtering/tcp_server.hpp"
 
 namespace datahaandtering {
 
 class WebUiServer {
 public:
-    WebUiServer(int port, TcpServer& tcp_server, CommandDispatcher& command_dispatcher);
+    WebUiServer(
+        int port,
+        TcpServer& tcp_server,
+        CommandDispatcher& command_dispatcher,
+        ConfigManager& config_manager,
+        DatabaseManager& db_manager
+    );
     ~WebUiServer();
 
     WebUiServer(const WebUiServer&) = delete;
@@ -33,13 +41,29 @@ private:
         std::string& body,
         std::string& content_type
     );
+    bool handle_config_request(
+        const std::string& request_line,
+        std::string& status_line,
+        std::string& body,
+        std::string& content_type
+    );
+    bool handle_profiles_request(
+        const std::string& request_line,
+        std::string& status_line,
+        std::string& body,
+        std::string& content_type
+    );
     void note_control_result(std::string action, bool queued);
     std::string build_status_json() const;
+    std::string build_config_json() const;
+    std::string build_profiles_json() const;
     static std::string build_index_html();
 
     int port_;
     TcpServer& tcp_server_;
     CommandDispatcher& command_dispatcher_;
+    ConfigManager& config_manager_;
+    DatabaseManager& db_manager_;
     int listen_socket_ {-1};
     std::atomic<bool> running_ {false};
     std::thread accept_thread_;
