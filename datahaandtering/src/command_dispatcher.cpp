@@ -1,11 +1,33 @@
 #include "datahaandtering/command_dispatcher.hpp"
 
+#include <sstream>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 #include "shared/constants.hpp"
 #include "shared/time_utils.hpp"
 
 namespace datahaandtering {
+
+namespace {
+std::vector<std::string> split_csv(const std::string& value) {
+    std::vector<std::string> out;
+    std::stringstream ss(value);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        const auto trim_left = item.find_first_not_of(" \t");
+        const auto trim_right = item.find_last_not_of(" \t");
+        if (trim_left == std::string::npos || trim_right == std::string::npos) {
+            continue;
+        }
+        const auto trimmed = item.substr(trim_left, trim_right - trim_left + 1);
+        if (!trimmed.empty()) {
+            out.push_back(trimmed);
+        }
+    }
+    return out;
+}
+}  // namespace
 
 CommandDispatcher::CommandDispatcher(
     ConfigManager& config_manager,
@@ -16,11 +38,12 @@ CommandDispatcher::CommandDispatcher(
 
 bool CommandDispatcher::dispatch_current_config() {
     const auto config = config_manager_.current_config();
+    const auto profile_names = split_csv(config.profile_name);
     shared::CommandPayload payload;
     payload.action = "set_config";
     payload.params = nlohmann::json {
-        {"mode", shared::to_string(config.mode)},
         {"profile_name", config.profile_name},
+        {"profile_names", profile_names},
         {"interval_sec", config.interval_sec},
         {"emergency_stop", config.emergency_stop}
     };

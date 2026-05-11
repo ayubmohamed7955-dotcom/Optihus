@@ -28,6 +28,7 @@ Resultat: **Pass / Fail**
 - [ ] Klient har `192.168.4.x` adresse
 - [ ] `server_host` sat til `192.168.4.1`
 - [ ] TCP exchange gennemført
+- [ ] Browser UI tilgængelig på `http://192.168.4.1:8080`
 
 Resultat: **Pass / Fail**
 
@@ -38,3 +39,4 @@ Gem mindst 3 artifacts:
 1. Serverlog med `Listening on port 5000` og `Client connected: ...`
 2. Klientlog med `Connected and sent hello ...`
 3. `ss -tnp` / tilsvarende med `ESTABLISHED`
+4. Browser-adgang til UI på `:8080`

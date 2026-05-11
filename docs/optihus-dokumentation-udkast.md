@@ -7,10 +7,16 @@ Fokus er stabil drift, tydelig rollefordeling og enkel fejlsøgning.
 
 Optihus består af to noder:
 
-- **Datahåndtering (server/AP-node)**: TCP-server, database og central styring.
-- **Miljøstyring (klient-node)**: TCP-klient og kontrol-loop.
+- **Datahåndtering (Pi 1, server/AP-node)**: AP, TCP-server, database, logging, central backend-styring og browser-UI.
+- **Miljøstyring (Pi 2, klient-node)**: TCP-klient/controller med sensor/aktuator-logik.
 
 Målet er lokal, robust kommunikation mellem noderne uden cloud-afhængighed.
+
+Brugerflader:
+
+- Browser UI er primær interface for status og kontrol.
+- TUI er fallback/admin.
+- Grafana er valgfri read-only visning (aldrig i kontrolstien).
 
 ## 2) Kommunikationsmodel
 
@@ -84,6 +90,7 @@ Brugeroplevelsen skal være startup-order tolerant:
 - Noder må gerne starte i vilkårlig rækkefølge.
 - Systemet skal selv komme i stabil forbindelse uden manuel procesrestart.
 - Dette verificeres med faste acceptkriterier i integrationstest.
+- Ingen afhængighed af browser auto-launch/captive-portal tricks.
 
 ## 7) Acceptance criteria (integration)
 

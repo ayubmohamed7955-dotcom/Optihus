@@ -189,6 +189,23 @@ bool DatabaseManager::upsert_profile(const shared::Profile& profile, const std::
     return ok;
 }
 
+bool DatabaseManager::delete_profile(const std::string& profile_name) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (db_ == nullptr || profile_name.empty()) {
+        return false;
+    }
+
+    const char* sql = "DELETE FROM profiles WHERE name = ?;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bind_text(stmt, 1, profile_name);
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
 std::vector<shared::Profile> DatabaseManager::list_profiles() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     std::vector<shared::Profile> result;

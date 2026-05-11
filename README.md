@@ -2,8 +2,8 @@
 
 Optihus is a two-node greenhouse control project built around a persistent TCP link:
 
-- `datahaandtering-rpi` (server/AP node): TCP server, SQLite, backend, optional TUI/Grafana.
-- `miljoestyring-rpi` (client node): TCP client, sensor/control loop.
+- `datahaandtering-rpi` (Pi 1, central node): AP, TCP server (`5000`), SQLite, logging, backend command handling, browser UI (`8080`).
+- `miljoestyring-rpi` (Pi 2, control node): TCP client/controller, sensor/actuator control loop, reconnect/retry until Pi 1 is reachable.
 
 This repository is intended to be cloned on both devices and built locally.
 
@@ -63,6 +63,7 @@ The main demo mode is fixed AP mode:
 
 - Server AP IP: `192.168.4.1`
 - TCP port: `5000`
+- Browser UI port: `8080`
 - Protocol: JSON-lines (one JSON object per line)
 
 Cross-device TCP has been tested in two network scenarios:
@@ -103,6 +104,7 @@ cmake --build build -j4
 Expected startup log includes:
 
 - `Listening on port 5000`
+- `Browser UI listening on port 8080`
 
 ### 2) Client (Miljøstyring node)
 
@@ -127,6 +129,18 @@ Expected server log includes:
 - `Client connected: 192.168.4.x`
 - `Received hello. Sending active config.`
 
+### 3) Human interface (Laptop on AP)
+
+Connect laptop to Pi 1 AP and open:
+
+- `http://192.168.4.1:8080`
+
+Interface policy:
+
+- Browser UI is primary for status/control.
+- TUI is fallback/admin only.
+- Grafana is optional read-only overview (never command/control path).
+
 ## Boot reliability rule
 
 The system should be user-friendly and startup-order tolerant:
@@ -136,6 +150,13 @@ The system should be user-friendly and startup-order tolerant:
 - No manual process restart should be required during normal startup.
 
 This is checked in the integration test checklist.
+
+## Control-path rule (no architecture drift)
+
+- Keep Pi 1 as central brain.
+- Keep control flow through existing backend + TCP path.
+- Keep UI practical/minimal.
+- Do not add cloud services or extra control layers in critical path.
 
 ## Timestamps and data format
 

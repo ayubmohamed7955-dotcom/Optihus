@@ -8,6 +8,7 @@ Få Optihus i drift med mindst mulig teknik:
 
 - Datahåndtering kører som server
 - Miljøstyring forbinder som klient
+- Browser UI på datahåndtering er primær brugerflade
 - Forbindelsen er OK når begge viser forventede linjer
 
 ## Før du starter
@@ -56,6 +57,13 @@ Systemet virker når:
 1. server lytter på port `5000`
 2. klient forbinder til serverens IP
 3. server logger klientens IP
+4. browser UI åbner på `http://192.168.4.1:8080` fra laptop på AP
+
+## Interface-regler
+
+- Browser UI bruges til normal status og kontrol.
+- TUI bruges kun som fallback/admin.
+- Grafana bruges kun til read-only grafer/overblik (ikke kontrol).
 
 ## Stop systemet
 

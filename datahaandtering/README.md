@@ -5,9 +5,10 @@ Denne mappe er server-delen af Optihus.
 ## Hvad den gør
 
 - Starter TCP-server på port `5000`
+- Starter browser-UI på port `8080`
 - Gemmer data i SQLite
 - Behandler beskeder fra klienten
-- Kan køre TUI lokalt på serveren
+- TUI kan køres lokalt som fallback/admin
 
 ## Vigtige undermapper
 
@@ -31,3 +32,4 @@ Denne mappe er server-delen af Optihus.
 Forventet log:
 
 - `Listening on port 5000`
+- `Browser UI listening on port 8080`

@@ -7,6 +7,7 @@ Denne mappe er klient-delen af Optihus.
 - Forbinder til serverens TCP port `5000`
 - Sender handshake (`hello`)
 - Kører sensor/kontrol-loop
+- Retry/reconnecter automatisk indtil server/AP er tilgængelig
 
 ## Vigtige undermapper
 

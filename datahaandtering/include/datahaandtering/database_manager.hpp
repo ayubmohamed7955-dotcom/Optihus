@@ -41,6 +41,7 @@ public:
         const std::string& status
     );
     bool upsert_profile(const shared::Profile& profile, const std::string& timestamp_utc);
+    bool delete_profile(const std::string& profile_name);
     std::vector<shared::Profile> list_profiles();
 
     bool load_active_config(shared::ActiveConfig& out_config);

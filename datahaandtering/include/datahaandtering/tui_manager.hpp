@@ -16,6 +16,7 @@ private:
     void list_profiles() const;
     void select_profile();
     void create_profile();
+    void delete_profile();
     void set_mode();
     void toggle_emergency_stop();
 
