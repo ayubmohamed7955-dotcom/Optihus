@@ -75,6 +75,21 @@ int App::run() {
     while (true) {
         const auto sample = sensor_manager.read_sample();
         control_manager.evaluate(sample);
+        if (!client.send_telemetry(sample)) {
+            shared::log_warn("miljoestyring", "Telemetry send failed. Reconnecting...");
+            while (!client.connect()) {
+                shared::log_warn(
+                    "miljoestyring",
+                    "Could not reconnect to server. Retrying in "
+                        + std::to_string(shared::constants::kReconnectDelaySec)
+                        + " seconds"
+                );
+                std::this_thread::sleep_for(
+                    std::chrono::seconds(shared::constants::kReconnectDelaySec)
+                );
+            }
+            continue;
+        }
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }

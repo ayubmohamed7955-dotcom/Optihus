@@ -17,6 +17,35 @@ std::string col_text(sqlite3_stmt* stmt, int index) {
     const unsigned char* raw = sqlite3_column_text(stmt, index);
     return raw == nullptr ? "" : reinterpret_cast<const char*>(raw);
 }
+
+bool telemetry_has_temperature_column(sqlite3* db) {
+    const char* sql = "PRAGMA table_info(telemetry);";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const auto name = col_text(stmt, 1);
+        if (name == "temperature_c") {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool telemetry_table_exists(sqlite3* db) {
+    const char* sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='telemetry' LIMIT 1;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    const bool exists = (sqlite3_step(stmt) == SQLITE_ROW);
+    sqlite3_finalize(stmt);
+    return exists;
+}
 }  // namespace
 
 DatabaseManager::DatabaseManager(std::string db_path) : db_path_(std::move(db_path)) {}
@@ -39,6 +68,22 @@ bool DatabaseManager::open() {
             db_ = nullptr;
         }
         return false;
+    }
+    if (telemetry_table_exists(db_) && !telemetry_has_temperature_column(db_)) {
+        char* err = nullptr;
+        const int alter_rc =
+            sqlite3_exec(db_, "ALTER TABLE telemetry ADD COLUMN temperature_c REAL;", nullptr, nullptr, &err);
+        if (alter_rc != SQLITE_OK) {
+            const std::string msg = err == nullptr ? "unknown" : err;
+            if (err != nullptr) {
+                sqlite3_free(err);
+            }
+            shared::log_error("database_manager", "Failed to add telemetry.temperature_c column: " + msg);
+            sqlite3_close(db_);
+            db_ = nullptr;
+            return false;
+        }
+        shared::log_info("database_manager", "Applied DB migration: telemetry.temperature_c");
     }
     shared::log_info("database_manager", "Opened SQLite: " + db_path_);
     return true;
@@ -76,20 +121,21 @@ bool DatabaseManager::insert_telemetry(
     }
 
     const char* sql =
-        "INSERT INTO telemetry(timestamp, humidity_air, humidity_soil, pump_status, motor_status, "
-        "error_status, source) VALUES (?, ?, ?, ?, ?, ?, ?);";
+        "INSERT INTO telemetry(timestamp, temperature_c, humidity_air, humidity_soil, pump_status, motor_status, "
+        "error_status, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
     }
 
     sqlite3_bind_text(stmt, 1, timestamp_utc.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(stmt, 2, sample.humidity_air);
-    sqlite3_bind_double(stmt, 3, sample.humidity_soil);
-    sqlite3_bind_text(stmt, 4, sample.pump_status.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, sample.motor_status.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 6, sample.error_status.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 7, source.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 2, sample.temperature_c);
+    sqlite3_bind_double(stmt, 3, sample.humidity_air);
+    sqlite3_bind_double(stmt, 4, sample.humidity_soil);
+    sqlite3_bind_text(stmt, 5, sample.pump_status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, sample.motor_status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, sample.error_status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, source.c_str(), -1, SQLITE_TRANSIENT);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);

@@ -4,6 +4,8 @@
 #include <string>
 #include <string_view>
 
+#include "shared/types.hpp"
+
 #if defined(_WIN32)
 #include <winsock2.h>
 #endif
@@ -18,6 +20,7 @@ public:
     bool connect();
     void disconnect();
     bool is_connected() const;
+    bool send_telemetry(const shared::TelemetrySample& sample);
 
 private:
     bool send_all(std::string_view payload);

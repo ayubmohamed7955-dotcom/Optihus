@@ -65,6 +65,7 @@ nlohmann::json to_json_obj(const HelloPayload& payload) {
 
 nlohmann::json to_json_obj(const TelemetryPayload& payload) {
     return nlohmann::json {
+        {"temperature_c", payload.temperature_c},
         {"humidity_air", payload.humidity_air},
         {"humidity_soil", payload.humidity_soil},
         {"pump_status", payload.pump_status},
@@ -110,6 +111,7 @@ std::optional<TelemetryPayload> telemetry_from_json(const nlohmann::json& j) {
     }
 
     TelemetryPayload payload;
+    payload.temperature_c = j.value("temperature_c", 0.0);
     payload.humidity_air = j.value("humidity_air", 0.0);
     payload.humidity_soil = j.value("humidity_soil", 0.0);
     payload.pump_status = j.value("pump_status", "off");

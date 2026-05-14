@@ -129,6 +129,31 @@ bool TcpClient::is_connected() const {
 #endif
 }
 
+bool TcpClient::send_telemetry(const shared::TelemetrySample& sample) {
+    shared::TelemetryPayload telemetry;
+    telemetry.temperature_c = sample.temperature_c;
+    telemetry.humidity_air = sample.humidity_air;
+    telemetry.humidity_soil = sample.humidity_soil;
+    telemetry.pump_status = sample.pump_status;
+    telemetry.motor_status = sample.motor_status;
+    telemetry.error_status = sample.error_status;
+
+    const auto telemetry_message = shared::make_message(
+        shared::MessageType::Telemetry,
+        std::string(shared::constants::kSourceMiljoestyring),
+        shared::to_json_obj(telemetry),
+        "",
+        sample.timestamp_utc
+    );
+
+    if (!send_all(shared::encode_json_line(telemetry_message))) {
+        shared::log_error("tcp_client", "Failed to send telemetry");
+        disconnect();
+        return false;
+    }
+    return true;
+}
+
 bool TcpClient::send_all(std::string_view payload) {
     if (!is_connected()) {
         shared::log_error("tcp_client", "send_all called on disconnected socket");

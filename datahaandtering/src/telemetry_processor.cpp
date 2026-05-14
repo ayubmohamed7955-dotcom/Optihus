@@ -54,6 +54,7 @@ void TelemetryProcessor::process_telemetry_message(const shared::MessageEnvelope
 
     shared::TelemetrySample sample;
     sample.timestamp_utc = message.ts_utc;
+    sample.temperature_c = telemetry->temperature_c;
     sample.humidity_air = telemetry->humidity_air;
     sample.humidity_soil = telemetry->humidity_soil;
     sample.pump_status = telemetry->pump_status;

@@ -33,6 +33,7 @@ struct HelloPayload {
 };
 
 struct TelemetryPayload {
+    double temperature_c {0.0};
     double humidity_air {0.0};
     double humidity_soil {0.0};
     std::string pump_status {"off"};

@@ -5,6 +5,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS telemetry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,
+    temperature_c REAL,
     humidity_air REAL,
     humidity_soil REAL,
     pump_status TEXT NOT NULL,
