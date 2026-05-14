@@ -65,6 +65,15 @@ Systemet virker når:
 - TUI bruges kun som fallback/admin.
 - Grafana bruges kun til read-only grafer/overblik (ikke kontrol).
 
+## Fallback hvis UI ikke åbner automatisk
+
+1. Åbn browser manuelt og gå til `http://192.168.4.1:8080`.
+2. Hvis browser UI stadig ikke kan bruges, kør fallback/admin TUI på Pi 1:
+
+```bash
+./build/datahaandtering/datahaandtering --tui
+```
+
 ## Stop systemet
 
 - Tryk `Ctrl + C` i terminalen på hver enhed.

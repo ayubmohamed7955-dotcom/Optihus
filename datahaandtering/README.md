@@ -33,3 +33,18 @@ Forventet log:
 
 - `Listening on port 5000`
 - `Browser UI listening on port 8080`
+
+## Fallback/admin TUI
+
+Hvis browser UI ikke er tilgængelig, kan TUI startes direkte:
+
+```bash
+./build/datahaandtering/datahaandtering --tui
+```
+
+TUI er fallback/admin og erstatter ikke browser UI som primær brugerflade.
+
+## Drivkasser (nuværende mapping)
+
+- Browser UI kan oprette/flere logiske drivkasser (`plant_boxes`), som gemmes i SQLite og sendes i `set_config`.
+- Pi 2 hardware bruger i dag kun én fysisk plantekasse (slot 1), så multi-kasse bruges foreløbigt som konfigurationsdata til næste fase.

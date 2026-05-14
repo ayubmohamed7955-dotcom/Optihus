@@ -1,4 +1,4 @@
-#include "miljoestyring/tcp_client.hpp"
+#include "tcp_client.hpp"
 
 #include <string>
 #include <utility>
@@ -41,6 +41,22 @@ TcpClient::~TcpClient() {
         winsock_started_ = false;
     }
 #endif
+}
+
+void TcpClient::stop_reader() {
+    reader_run_.store(false);
+    if (reader_thread_.joinable()) {
+#if defined(_WIN32)
+        if (socket_fd_ != INVALID_SOCKET) {
+            shutdown(socket_fd_, SD_BOTH);
+        }
+#else
+        if (socket_fd_ >= 0) {
+            shutdown(socket_fd_, SHUT_RDWR);
+        }
+#endif
+        reader_thread_.join();
+    }
 }
 
 bool TcpClient::connect() {
@@ -107,6 +123,8 @@ bool TcpClient::connect() {
 }
 
 void TcpClient::disconnect() {
+    stop_reader();
+    read_buffer_.clear();
     if (is_connected()) {
 #if defined(_WIN32)
         shutdown(socket_fd_, SD_BOTH);
@@ -127,6 +145,52 @@ bool TcpClient::is_connected() const {
 #else
     return socket_fd_ >= 0;
 #endif
+}
+
+void TcpClient::start_reader(shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound) {
+    stop_reader();
+    inbound_queue_ = &inbound;
+    read_buffer_.clear();
+    reader_run_.store(true);
+    reader_thread_ = std::thread(&TcpClient::read_loop, this);
+}
+
+void TcpClient::read_loop() {
+    char chunk[1024];
+    while (reader_run_.load() && is_connected()) {
+#if defined(_WIN32)
+        const int n = recv(socket_fd_, chunk, static_cast<int>(sizeof(chunk)), 0);
+#else
+        const ssize_t n = recv(socket_fd_, chunk, sizeof(chunk), 0);
+#endif
+        if (n <= 0) {
+            if (n == 0) {
+                shared::log_info("tcp_client", "Server closed connection (recv=0)");
+            } else if (reader_run_.load()) {
+                shared::log_warn("tcp_client", "recv failed: " + last_socket_error());
+            }
+            reader_run_.store(false);
+            break;
+        }
+
+        read_buffer_.append(chunk, static_cast<std::size_t>(n));
+        std::size_t newline_pos = std::string::npos;
+        while ((newline_pos = read_buffer_.find('\n')) != std::string::npos) {
+            std::string line = read_buffer_.substr(0, newline_pos);
+            read_buffer_.erase(0, newline_pos + 1);
+            if (line.empty()) {
+                continue;
+            }
+            const auto parsed = shared::decode_json_line(line);
+            if (!parsed.has_value()) {
+                shared::log_warn("tcp_client", "Dropped invalid JSON line from server");
+                continue;
+            }
+            if (inbound_queue_ != nullptr) {
+                inbound_queue_->push(*parsed);
+            }
+        }
+    }
 }
 
 bool TcpClient::send_telemetry(const shared::TelemetrySample& sample) {

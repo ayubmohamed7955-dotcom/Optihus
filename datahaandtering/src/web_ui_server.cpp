@@ -379,6 +379,10 @@ void WebUiServer::handle_client(int client_socket) {
         || request_line.rfind("POST /api/profiles/upsert", 0) == 0
         || request_line.rfind("POST /api/profiles/delete", 0) == 0) {
         handle_profiles_request(request_line, status_line, body, content_type);
+    } else if (request_line.rfind("GET /api/plant-boxes ", 0) == 0
+        || request_line.rfind("POST /api/plant-boxes/upsert", 0) == 0
+        || request_line.rfind("POST /api/plant-boxes/delete", 0) == 0) {
+        handle_plant_boxes_request(request_line, status_line, body, content_type);
     } else if (request_line.rfind("POST /api/control/", 0) == 0) {
         if (!handle_control_request(request_line, status_line, body, content_type)) {
             status_line = "HTTP/1.1 400 Bad Request\r\n";
@@ -621,6 +625,94 @@ bool WebUiServer::handle_profiles_request(
     return true;
 }
 
+bool WebUiServer::handle_plant_boxes_request(
+    const std::string& request_line,
+    std::string& status_line,
+    std::string& body,
+    std::string& content_type
+) {
+    content_type = "application/json; charset=utf-8";
+    if (request_line.rfind("GET /api/plant-boxes ", 0) == 0) {
+        body = build_plant_boxes_json();
+        return true;
+    }
+    if (request_line.rfind("POST /api/plant-boxes/upsert", 0) == 0) {
+        const auto query = parse_query(request_line);
+        shared::PlantBoxConfig plant_box;
+        if (const auto it = query.find("id"); it != query.end() && !it->second.empty()) {
+            try {
+                plant_box.id = std::stoi(it->second);
+            } catch (...) {
+                status_line = "HTTP/1.1 400 Bad Request\r\n";
+                body = "{\"error\":\"invalid id\"}\n";
+                return true;
+            }
+        }
+        if (const auto it = query.find("label"); it != query.end()) {
+            plant_box.label = it->second;
+        }
+        if (const auto it = query.find("slot"); it != query.end()) {
+            try {
+                plant_box.slot = std::stoi(it->second);
+            } catch (...) {
+                status_line = "HTTP/1.1 400 Bad Request\r\n";
+                body = "{\"error\":\"invalid slot\"}\n";
+                return true;
+            }
+        }
+        if (const auto it = query.find("is_active"); it != query.end()) {
+            plant_box.is_active = (it->second == "1" || it->second == "true");
+        }
+        if (plant_box.label.empty() || plant_box.slot < 1) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"label and slot>=1 required\"}\n";
+            return true;
+        }
+        const bool ok = db_manager_.upsert_plant_box(plant_box, shared::now_utc_iso8601());
+        const bool queued = ok ? command_dispatcher_.dispatch_current_config() : false;
+        if (ok) {
+            note_control_result("set_config", queued);
+        }
+        body = std::string("{\"ok\":")
+            + (ok ? "true" : "false")
+            + ",\"queued\":"
+            + (queued ? "true" : "false")
+            + "}\n";
+        return true;
+    }
+    if (request_line.rfind("POST /api/plant-boxes/delete", 0) == 0) {
+        const auto query = parse_query(request_line);
+        int id = 0;
+        if (const auto it = query.find("id"); it != query.end()) {
+            try {
+                id = std::stoi(it->second);
+            } catch (...) {
+                status_line = "HTTP/1.1 400 Bad Request\r\n";
+                body = "{\"error\":\"invalid id\"}\n";
+                return true;
+            }
+        }
+        if (id <= 0) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"id required\"}\n";
+            return true;
+        }
+        const bool ok = db_manager_.delete_plant_box(id);
+        if (!ok) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"unable to delete plant box (check id or minimum one box rule)\"}\n";
+            return true;
+        }
+        const bool queued = command_dispatcher_.dispatch_current_config();
+        note_control_result("set_config", queued);
+        body = std::string("{\"ok\":true,\"queued\":") + (queued ? "true" : "false") + "}\n";
+        return true;
+    }
+    status_line = "HTTP/1.1 405 Method Not Allowed\r\n";
+    body = "{\"error\":\"method not allowed\"}\n";
+    return true;
+}
+
 void WebUiServer::note_control_result(std::string action, bool queued) {
     std::lock_guard<std::mutex> lock(status_mutex_);
     last_control_action_ = std::move(action);
@@ -715,6 +807,27 @@ std::string WebUiServer::build_profiles_json() const {
     return oss.str();
 }
 
+std::string WebUiServer::build_plant_boxes_json() const {
+    const auto plant_boxes = db_manager_.list_plant_boxes();
+    std::ostringstream oss;
+    oss << "[\n";
+    for (std::size_t i = 0; i < plant_boxes.size(); ++i) {
+        const auto& box = plant_boxes[i];
+        oss << "  {\n"
+            << "    \"id\": " << box.id << ",\n"
+            << "    \"label\": \"" << json_escape(box.label) << "\",\n"
+            << "    \"slot\": " << box.slot << ",\n"
+            << "    \"is_active\": " << (box.is_active ? "true" : "false") << "\n"
+            << "  }";
+        if (i + 1 < plant_boxes.size()) {
+            oss << ",";
+        }
+        oss << "\n";
+    }
+    oss << "]\n";
+    return oss.str();
+}
+
 std::string WebUiServer::build_index_html() {
     return "<!doctype html>\n"
            "<html lang=\"da\">\n"
@@ -761,7 +874,7 @@ std::string WebUiServer::build_index_html() {
            "<body>\n"
            "  <div class=\"container\">\n"
            "    <h1>Optihus Kontrolpanel</h1>\n"
-           "    <p class=\"muted\">Profilvalg redigeres i Profiler-sektionen og bliver først aktivt efter Gem konfiguration.</p>\n"
+           "    <p class=\"muted\">Profilvalg og drivkasser redigeres i sektionerne nedenfor og bliver først aktivt efter gemte ændringer er sendt.</p>\n"
            "    <div class=\"grid\">\n"
            "      <section class=\"card\">\n"
            "        <h2>Systemstatus</h2>\n"
@@ -790,6 +903,7 @@ std::string WebUiServer::build_index_html() {
            "            <li><strong>Minimum/Maksimum luftfugtighed:</strong> nedre/øvre grænser for luftfugtighed.</li>\n"
            "            <li><strong>Minimum/Maksimum jordfugtighed:</strong> nedre/øvre grænser for jordfugtighed og vanding.</li>\n"
            "            <li><strong>Profil-interval:</strong> anbefalet kontrolinterval for den enkelte profil.</li>\n"
+           "            <li><strong>Drivkasse:</strong> logisk kasse/slot, der beskriver hvilken fysisk plantekasse konfigurationen hører til.</li>\n"
            "          </ul>\n"
            "        </div>\n"
            "      </section>\n"
@@ -826,10 +940,28 @@ std::string WebUiServer::build_index_html() {
            "          </table>\n"
            "        </div>\n"
            "      </section>\n"
+           "      <section class=\"card\" style=\"grid-column: 1 / -1;\">\n"
+           "        <h2>Drivkasser</h2>\n"
+           "        <p class=\"hint\">Definer logiske drivkasser her. I nuværende hardware bruges kun slot 1 fysisk på Pi 2, men hele listen gemmes og sendes i set_config for fremtidig multi-kasse støtte.</p>\n"
+           "        <div class=\"row\">\n"
+           "          <div class=\"field\"><label>Drivkasse-id (tom = ny)</label><input id=\"pb_id\" type=\"number\" min=\"1\" placeholder=\"auto\"></div>\n"
+           "          <div class=\"field\"><label>Label</label><input id=\"pb_label\" placeholder=\"Drivkasse 1\"></div>\n"
+           "          <div class=\"field\"><label>Slot</label><input id=\"pb_slot\" type=\"number\" min=\"1\" value=\"1\"></div>\n"
+           "          <div class=\"field\"><label>Aktiv</label><select id=\"pb_active\"><option value=\"1\">ja</option><option value=\"0\">nej</option></select></div>\n"
+           "          <button onclick=\"savePlantBox()\">Gem drivkasse</button>\n"
+           "        </div>\n"
+           "        <div style=\"overflow:auto; margin-top:0.8rem;\">\n"
+           "          <table>\n"
+           "            <thead><tr><th>ID</th><th>Label</th><th>Slot</th><th>Aktiv</th><th>Handlinger</th></tr></thead>\n"
+           "            <tbody id=\"plantBoxesBody\"><tr><td colspan=\"5\">Indlæser...</td></tr></tbody>\n"
+           "          </table>\n"
+           "        </div>\n"
+           "      </section>\n"
            "    </div>\n"
            "  </div>\n"
            "  <script>\n"
            "    let latestProfiles = [];\n"
+           "    let latestPlantBoxes = [];\n"
            "    let activeConfig = null;\n"
            "    const draftConfig = { profiles: [], interval_sec: 900, emergency_stop: false };\n"
            "    let draftDirty = false;\n"
@@ -919,6 +1051,34 @@ std::string WebUiServer::build_index_html() {
            "          </tr>`;\n"
            "      }).join('');\n"
            "    }\n"
+           "    function editPlantBox(encodedId) {\n"
+           "      const id = Number(decodeURIComponent(encodedId));\n"
+           "      const current = latestPlantBoxes.find(pb => Number(pb.id) === id);\n"
+           "      if (!current) return;\n"
+           "      document.getElementById('pb_id').value = String(current.id);\n"
+           "      document.getElementById('pb_label').value = String(current.label || '');\n"
+           "      document.getElementById('pb_slot').value = String(current.slot || 1);\n"
+           "      document.getElementById('pb_active').value = current.is_active ? '1' : '0';\n"
+           "    }\n"
+           "    function renderPlantBoxesTable() {\n"
+           "      const body = document.getElementById('plantBoxesBody');\n"
+           "      if (!Array.isArray(latestPlantBoxes) || latestPlantBoxes.length === 0) {\n"
+           "        body.innerHTML = '<tr><td colspan=\"5\">Ingen drivkasser</td></tr>';\n"
+           "        return;\n"
+           "      }\n"
+           "      body.innerHTML = latestPlantBoxes.map(pb => `\n"
+           "        <tr>\n"
+           "          <td>${escapeHtml(pb.id)}</td>\n"
+           "          <td>${escapeHtml(pb.label)}</td>\n"
+           "          <td>${escapeHtml(pb.slot)}</td>\n"
+           "          <td>${pb.is_active ? 'ja' : 'nej'}</td>\n"
+           "          <td>\n"
+           "            <button class=\"secondary\" onclick=\"editPlantBox('${encodeURIComponent(String(pb.id))}')\">Redigér</button>\n"
+           "            <button class=\"danger\" onclick=\"deletePlantBox('${encodeURIComponent(String(pb.id))}')\">Slet</button>\n"
+           "          </td>\n"
+           "        </tr>\n"
+           "      `).join('');\n"
+           "    }\n"
            "    async function loadStatus() {\n"
            "      try {\n"
            "        const res = await fetch('/api/status');\n"
@@ -962,6 +1122,16 @@ std::string WebUiServer::build_index_html() {
            "        document.getElementById('profilesBody').innerHTML = '<tr><td colspan=\"6\">Profiler utilgængelige: ' + e + '</td></tr>';\n"
            "      }\n"
            "    }\n"
+           "    async function loadPlantBoxes() {\n"
+           "      try {\n"
+           "        const res = await fetch('/api/plant-boxes');\n"
+           "        latestPlantBoxes = await res.json();\n"
+           "        if (!Array.isArray(latestPlantBoxes)) latestPlantBoxes = [];\n"
+           "        renderPlantBoxesTable();\n"
+           "      } catch (e) {\n"
+           "        document.getElementById('plantBoxesBody').innerHTML = '<tr><td colspan=\"5\">Drivkasser utilgængelige: ' + e + '</td></tr>';\n"
+           "      }\n"
+           "    }\n"
            "    async function deleteProfile(encodedName) {\n"
            "      const profile = decodeURIComponent(encodedName);\n"
            "      if (!confirm(`Slet profil ${profile}? Dette fjerner profilen permanent.`)) return;\n"
@@ -1000,6 +1170,36 @@ std::string WebUiServer::build_index_html() {
            "      await sendControl(`/api/profiles/upsert?name=${name}&crop=${crop}&min_air=${min_air}&max_air=${max_air}&min_soil=${min_soil}&max_soil=${max_soil}&interval=${interval}`);\n"
            "      await loadProfiles();\n"
            "    }\n"
+           "    async function savePlantBox() {\n"
+           "      const idRaw = document.getElementById('pb_id').value.trim();\n"
+           "      const label = document.getElementById('pb_label').value.trim();\n"
+           "      const slot = document.getElementById('pb_slot').value.trim();\n"
+           "      const isActive = document.getElementById('pb_active').value === '1' ? '1' : '0';\n"
+           "      if (!label) {\n"
+           "        alert('Label er påkrævet for drivkasse.');\n"
+           "        return;\n"
+           "      }\n"
+           "      const parts = [];\n"
+           "      if (idRaw) parts.push(`id=${encodeURIComponent(idRaw)}`);\n"
+           "      parts.push(`label=${encodeURIComponent(label)}`);\n"
+           "      parts.push(`slot=${encodeURIComponent(slot || '1')}`);\n"
+           "      parts.push(`is_active=${encodeURIComponent(isActive)}`);\n"
+           "      await sendControl(`/api/plant-boxes/upsert?${parts.join('&')}`);\n"
+           "      document.getElementById('pb_id').value = '';\n"
+           "      document.getElementById('pb_label').value = '';\n"
+           "      document.getElementById('pb_slot').value = '1';\n"
+           "      document.getElementById('pb_active').value = '1';\n"
+           "      await loadPlantBoxes();\n"
+           "    }\n"
+           "    async function deletePlantBox(encodedId) {\n"
+           "      const id = decodeURIComponent(encodedId);\n"
+           "      if (!confirm(`Slet drivkasse med id ${id}?`)) return;\n"
+           "      const result = await sendControl(`/api/plant-boxes/delete?id=${encodeURIComponent(id)}`);\n"
+           "      if (result?.error) {\n"
+           "        alert(`Kunne ikke slette drivkasse: ${result.error}`);\n"
+           "      }\n"
+           "      await loadPlantBoxes();\n"
+           "    }\n"
            "    async function sendControl(url) {\n"
            "      const target = document.getElementById('control');\n"
            "      target.textContent = 'Sender...';\n"
@@ -1015,13 +1215,8 @@ std::string WebUiServer::build_index_html() {
            "      }\n"
            "    }\n"
            "    function openGrafana() {\n"
-           "      const control = document.getElementById('control');\n"
-           "      const host = window.location.hostname || '192.168.4.1';\n"
-           "      if (host === '127.0.0.1' || host === 'localhost') {\n"
-           "        control.textContent = 'Grafana er ikke forventet lokalt på PC i denne fase. Brug Pi-test til sidst: http://192.168.4.1:3000';\n"
-           "        return;\n"
-           "      }\n"
-           "      window.open(`http://${host}:3000`, '_blank', 'noopener,noreferrer');\n"
+           "      const grafanaUrl = 'http://192.168.4.1:3000/d/ad99gg7/optihus-read-only-overview?orgId=1&from=now-24h&to=now&timezone=browser';\n"
+           "      window.open(grafanaUrl, '_blank', 'noopener,noreferrer');\n"
            "    }\n"
            "    document.getElementById('interval').addEventListener('input', (e) => {\n"
            "      draftConfig.interval_sec = Number(e.target.value || 900);\n"
@@ -1036,9 +1231,11 @@ std::string WebUiServer::build_index_html() {
            "    loadStatus();\n"
            "    loadConfig();\n"
            "    loadProfiles();\n"
+           "    loadPlantBoxes();\n"
            "    setInterval(loadStatus, 2000);\n"
            "    setInterval(loadConfig, 5000);\n"
            "    setInterval(loadProfiles, 10000);\n"
+           "    setInterval(loadPlantBoxes, 10000);\n"
            "  </script>\n"
            "</body>\n"
            "</html>\n";

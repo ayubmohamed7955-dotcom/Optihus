@@ -1,4 +1,4 @@
-#include "miljoestyring/actuator_manager.hpp"
+#include "actuator_manager.hpp"
 
 #include "shared/logger.hpp"
 

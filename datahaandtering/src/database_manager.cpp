@@ -85,6 +85,11 @@ bool DatabaseManager::open() {
         }
         shared::log_info("database_manager", "Applied DB migration: telemetry.temperature_c");
     }
+    if (!ensure_plant_boxes_schema_locked()) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+        return false;
+    }
     shared::log_info("database_manager", "Opened SQLite: " + db_path_);
     return true;
 }
@@ -284,6 +289,99 @@ std::vector<shared::Profile> DatabaseManager::list_profiles() {
     return result;
 }
 
+bool DatabaseManager::upsert_plant_box(
+    const shared::PlantBoxConfig& plant_box,
+    const std::string& timestamp_utc
+) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (db_ == nullptr || plant_box.label.empty() || plant_box.slot < 1) {
+        return false;
+    }
+
+    const char* sql_insert =
+        "INSERT INTO plant_boxes(label, slot, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?);";
+    const char* sql_update =
+        "UPDATE plant_boxes SET label = ?, slot = ?, is_active = ?, updated_at = ? WHERE id = ?;";
+
+    sqlite3_stmt* stmt = nullptr;
+    const bool has_id = plant_box.id > 0;
+    const char* sql = has_id ? sql_update : sql_insert;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+
+    bind_text(stmt, 1, plant_box.label);
+    sqlite3_bind_int(stmt, 2, plant_box.slot);
+    sqlite3_bind_int(stmt, 3, plant_box.is_active ? 1 : 0);
+    if (has_id) {
+        bind_text(stmt, 4, timestamp_utc);
+        sqlite3_bind_int(stmt, 5, plant_box.id);
+    } else {
+        bind_text(stmt, 4, timestamp_utc);
+        bind_text(stmt, 5, timestamp_utc);
+    }
+
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool DatabaseManager::delete_plant_box(int id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (db_ == nullptr || id <= 0) {
+        return false;
+    }
+
+    const char* count_sql = "SELECT COUNT(*) FROM plant_boxes;";
+    sqlite3_stmt* count_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, count_sql, -1, &count_stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    int total = 0;
+    if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+        total = sqlite3_column_int(count_stmt, 0);
+    }
+    sqlite3_finalize(count_stmt);
+    if (total <= 1) {
+        return false;
+    }
+
+    const char* sql = "DELETE FROM plant_boxes WHERE id = ?;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_int(stmt, 1, id);
+    const bool ok = (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db_) > 0);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+std::vector<shared::PlantBoxConfig> DatabaseManager::list_plant_boxes() {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::vector<shared::PlantBoxConfig> result;
+    if (db_ == nullptr) {
+        return result;
+    }
+
+    const char* sql = "SELECT id, label, slot, is_active FROM plant_boxes ORDER BY slot, id;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return result;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        shared::PlantBoxConfig plant_box;
+        plant_box.id = sqlite3_column_int(stmt, 0);
+        plant_box.label = col_text(stmt, 1);
+        plant_box.slot = sqlite3_column_int(stmt, 2);
+        plant_box.is_active = sqlite3_column_int(stmt, 3) == 1;
+        result.push_back(std::move(plant_box));
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
 bool DatabaseManager::load_active_config(shared::ActiveConfig& out_config) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     if (db_ == nullptr) {
@@ -365,6 +463,63 @@ bool DatabaseManager::exec_sql(const std::string& sql) {
         return false;
     }
     return true;
+}
+
+bool DatabaseManager::ensure_plant_boxes_schema_locked() {
+    if (db_ == nullptr) {
+        return false;
+    }
+
+    const char* schema_sql =
+        "CREATE TABLE IF NOT EXISTS plant_boxes ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "label TEXT NOT NULL,"
+        "slot INTEGER NOT NULL UNIQUE,"
+        "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),"
+        "created_at TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL"
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_plant_boxes_slot ON plant_boxes(slot);";
+
+    char* error_message = nullptr;
+    const int rc = sqlite3_exec(db_, schema_sql, nullptr, nullptr, &error_message);
+    if (rc != SQLITE_OK) {
+        const std::string error = (error_message == nullptr) ? "unknown" : error_message;
+        if (error_message != nullptr) {
+            sqlite3_free(error_message);
+        }
+        shared::log_error("database_manager", "Plant boxes schema setup failed: " + error);
+        return false;
+    }
+
+    const char* count_sql = "SELECT COUNT(*) FROM plant_boxes;";
+    sqlite3_stmt* count_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, count_sql, -1, &count_stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    int total = 0;
+    if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+        total = sqlite3_column_int(count_stmt, 0);
+    }
+    sqlite3_finalize(count_stmt);
+    if (total > 0) {
+        return true;
+    }
+
+    const std::string now = "1970-01-01T00:00:00Z";
+    const char* seed_sql =
+        "INSERT INTO plant_boxes(label, slot, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?);";
+    sqlite3_stmt* seed_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, seed_sql, -1, &seed_stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bind_text(seed_stmt, 1, "Drivkasse 1");
+    sqlite3_bind_int(seed_stmt, 2, 1);
+    bind_text(seed_stmt, 3, now);
+    bind_text(seed_stmt, 4, now);
+    const bool seeded = sqlite3_step(seed_stmt) == SQLITE_DONE;
+    sqlite3_finalize(seed_stmt);
+    return seeded;
 }
 
 }  // namespace datahaandtering

@@ -41,7 +41,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Composition root: all modules are created and wired here.
     datahaandtering::ConfigManager config_manager(db_manager);
 
     if (tui_mode) {

@@ -53,10 +53,17 @@ private:
         std::string& body,
         std::string& content_type
     );
+    bool handle_plant_boxes_request(
+        const std::string& request_line,
+        std::string& status_line,
+        std::string& body,
+        std::string& content_type
+    );
     void note_control_result(std::string action, bool queued);
     std::string build_status_json() const;
     std::string build_config_json() const;
     std::string build_profiles_json() const;
+    std::string build_plant_boxes_json() const;
     static std::string build_index_html();
 
     int port_;

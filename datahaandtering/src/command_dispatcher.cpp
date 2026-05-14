@@ -1,10 +1,13 @@
 #include "datahaandtering/command_dispatcher.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <vector>
+
 #include <nlohmann/json.hpp>
 
 #include "shared/constants.hpp"
+#include "shared/logger.hpp"
 #include "shared/time_utils.hpp"
 
 namespace datahaandtering {
@@ -27,6 +30,91 @@ std::vector<std::string> split_csv(const std::string& value) {
     }
     return out;
 }
+
+struct AggregatedBounds {
+    double min_humidity_air {0.0};
+    double max_humidity_air {0.0};
+    double min_humidity_soil {0.0};
+    double max_humidity_soil {0.0};
+};
+
+bool aggregate_bounds_if_compatible(
+    const std::vector<shared::Profile>& selected_profiles,
+    AggregatedBounds& out_bounds
+) {
+    if (selected_profiles.empty()) {
+        return false;
+    }
+    out_bounds.min_humidity_air = selected_profiles.front().min_humidity_air;
+    out_bounds.max_humidity_air = selected_profiles.front().max_humidity_air;
+    out_bounds.min_humidity_soil = selected_profiles.front().min_humidity_soil;
+    out_bounds.max_humidity_soil = selected_profiles.front().max_humidity_soil;
+
+    for (std::size_t i = 1; i < selected_profiles.size(); ++i) {
+        const auto& p = selected_profiles[i];
+        out_bounds.min_humidity_air = std::max(out_bounds.min_humidity_air, p.min_humidity_air);
+        out_bounds.max_humidity_air = std::min(out_bounds.max_humidity_air, p.max_humidity_air);
+        out_bounds.min_humidity_soil = std::max(out_bounds.min_humidity_soil, p.min_humidity_soil);
+        out_bounds.max_humidity_soil = std::min(out_bounds.max_humidity_soil, p.max_humidity_soil);
+    }
+    return out_bounds.min_humidity_air <= out_bounds.max_humidity_air &&
+        out_bounds.min_humidity_soil <= out_bounds.max_humidity_soil;
+}
+
+bool build_bounds_payload(
+    DatabaseManager& db_manager,
+    const std::vector<std::string>& profile_names,
+    nlohmann::json& out_bounds,
+    nlohmann::json& out_temp_bounds
+) {
+    const auto all = db_manager.list_profiles();
+    std::vector<shared::Profile> selected;
+    selected.reserve(profile_names.size());
+    for (const auto& name : profile_names) {
+        const auto it =
+            std::find_if(all.begin(), all.end(), [&](const shared::Profile& p) { return p.name == name; });
+        if (it != all.end()) {
+            selected.push_back(*it);
+        }
+    }
+    if (selected.empty()) {
+        return false;
+    }
+    AggregatedBounds bounds {};
+    if (!aggregate_bounds_if_compatible(selected, bounds)) {
+        shared::log_warn(
+            "command_dispatcher",
+            "Selected profiles have no overlapping humidity bounds; omitting bounds from set_config"
+        );
+        return false;
+    }
+    out_bounds = nlohmann::json {
+        {"min_humidity_air", bounds.min_humidity_air},
+        {"max_humidity_air", bounds.max_humidity_air},
+        {"min_humidity_soil", bounds.min_humidity_soil},
+        {"max_humidity_soil", bounds.max_humidity_soil},
+    };
+    // Profiles have no air temperature yet; send safe wide defaults for the window motor.
+    out_temp_bounds = nlohmann::json {
+        {"min", 12.0},
+        {"max", 35.0},
+    };
+    return true;
+}
+
+nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
+    const auto boxes = db_manager.list_plant_boxes();
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& box : boxes) {
+        out.push_back(nlohmann::json {
+            {"id", box.id},
+            {"label", box.label},
+            {"slot", box.slot},
+            {"is_active", box.is_active},
+        });
+    }
+    return out;
+}
 }  // namespace
 
 CommandDispatcher::CommandDispatcher(
@@ -39,14 +127,23 @@ CommandDispatcher::CommandDispatcher(
 bool CommandDispatcher::dispatch_current_config() {
     const auto config = config_manager_.current_config();
     const auto profile_names = split_csv(config.profile_name);
+    nlohmann::json bounds;
+    nlohmann::json temp_bounds;
+    const bool have_bounds = build_bounds_payload(db_manager_, profile_names, bounds, temp_bounds);
+
     shared::CommandPayload payload;
     payload.action = "set_config";
     payload.params = nlohmann::json {
         {"profile_name", config.profile_name},
         {"profile_names", profile_names},
         {"interval_sec", config.interval_sec},
-        {"emergency_stop", config.emergency_stop}
+        {"emergency_stop", config.emergency_stop},
+        {"plant_boxes", build_plant_boxes_payload(db_manager_)},
     };
+    if (have_bounds) {
+        payload.params["bounds"] = std::move(bounds);
+        payload.params["temp_bounds_c"] = std::move(temp_bounds);
+    }
     return enqueue_command(payload, "queued");
 }
 

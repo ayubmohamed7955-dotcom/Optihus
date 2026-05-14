@@ -29,6 +29,13 @@ struct ActiveConfig {
     bool emergency_stop {false};
 };
 
+struct PlantBoxConfig {
+    int id {0};
+    std::string label;
+    int slot {1};
+    bool is_active {true};
+};
+
 struct TelemetrySample {
     std::string timestamp_utc;
     double temperature_c {0.0};

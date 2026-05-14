@@ -135,6 +135,12 @@ Connect laptop to Pi 1 AP and open:
 
 - `http://192.168.4.1:8080`
 
+Fallback procedure if interface does not open automatically:
+
+1. Open browser manually and go to `http://192.168.4.1:8080`.
+2. If browser UI is not reachable, run local fallback/admin TUI on Pi 1:
+   - `./build/datahaandtering/datahaandtering --tui`
+
 Interface policy:
 
 - Browser UI is primary for status/control.

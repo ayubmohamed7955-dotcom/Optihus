@@ -3,9 +3,26 @@ add_executable(miljoestyring
     src/app.cpp
     src/tcp_client.cpp
     src/sensor_manager.cpp
-    src/actuator_manager.cpp
     src/control_manager.cpp
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(OPTIHUS_MILJOESTYRING_HARDWARE "GPIO/I2C driver build (Raspberry Pi)" ON)
+else()
+    set(OPTIHUS_MILJOESTYRING_HARDWARE OFF CACHE BOOL "GPIO/I2C driver build (Raspberry Pi)" FORCE)
+endif()
+
+if(OPTIHUS_MILJOESTYRING_HARDWARE)
+    target_sources(miljoestyring PRIVATE
+        src/hw/DHT22.cpp
+        src/hw/motor.cpp
+        src/hw/plant_box.cpp
+    )
+    target_compile_definitions(miljoestyring PRIVATE OPTIHUS_MILJOESTYRING_HARDWARE=1)
+    target_link_libraries(miljoestyring PRIVATE gpiodcxx gpiod)
+else()
+    target_compile_definitions(miljoestyring PRIVATE OPTIHUS_MILJOESTYRING_HARDWARE=0)
+endif()
 
 target_include_directories(miljoestyring
     PRIVATE

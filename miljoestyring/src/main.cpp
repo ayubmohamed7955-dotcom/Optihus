@@ -1,4 +1,4 @@
-#include "miljoestyring/app.hpp"
+#include "app.hpp"
 
 int main() {
     miljoestyring::App app;
