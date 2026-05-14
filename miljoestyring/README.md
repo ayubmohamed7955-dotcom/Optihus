@@ -16,9 +16,9 @@ Klientdelen af Optihus: TCP-mod `datahaandtering`, JSON-linjer som i `shared::Me
 
 CMake-option **`OPTIHUS_MILJOESTYRING_HARDWARE`** (default **ON** på Linux, **OFF** på Windows):
 
-- **`hw::DHT22`** (`DHT22.hpp` / `DHT22.cpp`) — lufttemperatur og luftfugtighed (IIO), samme API-navne som i zip (`getTemperature`, `getHumidity`, `update`).
-- **`hw::Motor`** — stepper til vindue; metodenavne som i zip (`setTemperatureLimits`, `getCurrentTemp`, `open`/`close`, `SEQ`, `STEPS_PER_REV`).
-- **`hw::PlantBox`** — jordfugt via **I2C** @ `0x48`, pumpe via `pinctrl`; som zip (`setMinimumThreshold`, `getCurrentAverageMoisture`, …).
+- **`hw::DHT22`** (`DHT22.hpp` / `DHT22.cpp`) — lufttemperatur og luftfugtighed (IIO), API: `getTemperature`, `getHumidity`, `update`.
+- **`hw::Motor`** — stepper til vindue, API: `setTemperatureLimits`, `getCurrentTemp`, `open`/`close`, `SEQ`, `STEPS_PER_REV`.
+- **`hw::PlantBox`** — jordfugt via **I2C** @ `0x48`, pumpe via `pinctrl`, API: `setMinimumThreshold`, `getCurrentAverageMoisture`, m.fl.
 
 På maskiner uden `libgpiod`: konfigurer med `-DOPTIHUS_MILJOESTYRING_HARDWARE=OFF` (stub-telemetry).
 

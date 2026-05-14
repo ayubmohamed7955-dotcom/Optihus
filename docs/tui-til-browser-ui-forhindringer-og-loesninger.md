@@ -77,7 +77,7 @@ Browser/TUI-tekster skulle være på dansk, men kode på engelsk.
 ## Kritiske resterende risici
 
 1. **End-to-end styringslogik i miljoestyring**
-   - Selvom payload nu indeholder `profile_names`, skal runtime-logikken stadig være helt entydig i miljøstyringen (hvordan flere profiler omsættes til styringsbeslutninger i praksis).
+   - Selvom payload nu indeholder `profile_names`, skal runtime-logikken fortsat være helt entydig i miljøstyringen (hvordan flere profiler omsættes til styringsbeslutninger i praksis).
 
 2. **Dataformat på lang sigt**
    - Kommasepareret liste i ét felt er pragmatisk, men ikke ideel til kompleks fremtidig logik.
@@ -89,10 +89,11 @@ Browser/TUI-tekster skulle være på dansk, men kode på engelsk.
 
 ## Anbefalet næste minimumstrin
 
-1. Fastlåst regel i dokumentation: "første profil er primær".
-2. Implementér/validér samme regel eksplicit i miljøstyringens anvendelse af config.
+1. Hold reglen eksplicit: flere profiler håndteres via overlap/intersection af grænser (ingen primær profil i UI/API).
+2. Verificér at miljøstyring anvender de aggregerede `bounds`/`temp_bounds_c` konsekvent ved reconnect og `sync-config`.
 3. Tilføj 3-5 målrettede integrationstests for:
    - tom profil-liste
    - ukendt profilnavn
    - profilsletning med aktiv konfiguration
+   - manuel fallback (browser åbning + `--tui`)
 

@@ -29,6 +29,8 @@ Resultat: **Pass / Fail**
 - [ ] `server_host` sat til `192.168.4.1`
 - [ ] TCP exchange gennemført
 - [ ] Browser UI tilgængelig på `http://192.168.4.1:8080`
+- [ ] Hvis UI ikke åbner automatisk: manuel åbning af `http://192.168.4.1:8080` virker
+- [ ] Fallback/admin TUI kan startes på Pi 1 med `./build/datahaandtering/datahaandtering --tui`
 
 Resultat: **Pass / Fail**
 
