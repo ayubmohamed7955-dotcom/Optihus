@@ -1,6 +1,9 @@
 #include "datahaandtering/app.hpp"
 
+#include "shared/constants.hpp"
 #include "shared/logger.hpp"
+
+#include <sstream>
 #include <utility>
 
 namespace datahaandtering {
@@ -32,10 +35,17 @@ int App::run() {
     }
     telemetry_processor_.start();
 
-    shared::log_info(
-        "datahaandtering",
-        "Backend running. Web ui: http://192.168.4.1:8080 (TUI optional via --tui)"
-    );
+    {
+        std::ostringstream oss;
+        oss << "Backend running. Web ui on port "
+            << shared::constants::kHttpUiPort
+            << " (open http://<this-pi-ip>:"
+            << shared::constants::kHttpUiPort
+            << " in a browser; AP example http://192.168.4.1:"
+            << shared::constants::kHttpUiPort
+            << "). TUI optional via --tui";
+        shared::log_info("datahaandtering", oss.str());
+    }
 
     while (running_) {
         const auto next = inbound_queue_.wait_pop();

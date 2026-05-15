@@ -60,6 +60,14 @@ Programmet **starter ikke** AP selv. Du sætter et hotspot i OS, så Pi 1 fx få
 - Sikr at forbindelsen har **Autoconnect / start ved boot** (ordlyden afhænger af værktøj).
 - SSID/kodeord kan matche `shared/constants.hpp` (`OptihusNet` / …) — det er **kun** til Wi‑Fi; det er ikke det samme som systemd.
 
+### Web-ui og "login til netværk"
+
+Telefoner og laptops åbner ofte en **automatisk side** når de kobler på hotspot (captive portal). Den side er typisk `http://192.168.4.1/` **uden** `:8080`, altså **standard-port 80**. Optihus-programmet **lytter ikke på port 80**, kun på **8080** til Web-ui og **5000** til TCP mod Pi 2.
+
+Derfor kan genvejen fra Wi‑Fi-login **ikke** åbne kontrolpanelet, selv om **`http://192.168.4.1:8080/`** virker, når du skriver den **manuelt**.
+
+**Løsning:** Åbn browser selv og brug **`http://192.168.4.1:8080`** (eller Pi 1's rigtige IP på LAN med `:8080`). Vil du have automatisk omdirigering fra port 80 til 8080, kræver det ekstra opsætning i Linux (fx en lille webserver eller `iptables`-viderestilling), som ikke ligger i C++-programmet.
+
 ### Autostart af `datahaandtering`
 
 0. **`git pull`** i `~/Optihus`, så du har **`deploy/systemd/`** (se afsnittet **Fejlfinding** øverst hvis `cp` ikke finder filer).
