@@ -1,19 +1,19 @@
-# TUI til Browser-UI: forhindringer og løste fejl
+# TUI til Web ui: forhindringer og løste fejl
 
 ## Formål
 
 Dette notat beskriver:
 
-- de vigtigste forhindringer ved at flytte Optihus fra terminal-TUI til browser-UI
+- de vigtigste forhindringer ved at flytte Optihus fra terminal-TUI til Web ui
 - hvilke konkrete fejl/problemer vi har løst i TUI/browser-flowet indtil nu
 - hvilke risici der stadig skal håndteres for en robust aflevering
 
-## Forhindringer ved konvertering fra TUI til browser-UI
+## Forhindringer ved konvertering fra TUI til Web ui
 
 ### 1) Tilstandsmodel: fra enkeltprofil til multi-profil
 
 Den oprindelige model var i praksis bygget omkring `profile_name` som én værdi.
-Browser-UI krævede valg af flere profiler samtidig.
+Web ui krævede valg af flere profiler samtidig.
 
 **Udfordring:** Eksisterende datafelt og dele af logikken forventede enkeltprofil.
 
@@ -30,11 +30,11 @@ Kun browser-validering er ikke robust nok, fordi API kan kaldes direkte.
 - mindst én profil er valgt
 - alle valgte profiler findes i databasen
 
-### 3) Konsistens mellem TUI og browser-UI
+### 3) Konsistens mellem TUI og Web ui
 
-Hvis TUI og browser-UI håndterer profiler forskelligt, får man uforudsigelig drift.
+Hvis TUI og Web ui håndterer profiler forskelligt, får man uforudsigelig drift.
 
-**Udfordring:** TUI havde enkeltprofil-flow, mens browser-UI fik multi-profil.
+**Udfordring:** TUI havde enkeltprofil-flow, mens Web ui fik multi-profil.
 
 **Løsning:** TUI er opdateret til samme princip:
 
@@ -69,10 +69,10 @@ Browser/TUI-tekster skulle være på dansk, men kode på engelsk.
    - Nu normaliseres aktiv konfiguration efter profilsletning.
 
 4. **Uens adfærd mellem UI-lag**
-   - TUI følger nu samme multi-profil-regel som browser-UI.
+   - TUI følger nu samme multi-profil-regel som Web ui.
 
 5. **Uklare brugertekster**
-   - Tekster er oversat til dansk med fulde beskrivelser (fx "Minimum luftfugtighed").
+   - Tekster er oversat til dansk med fulde beskrivelser (f.eks. "Minimum luftfugtighed").
 
 ## Kritiske resterende risici
 
@@ -81,7 +81,7 @@ Browser/TUI-tekster skulle være på dansk, men kode på engelsk.
 
 2. **Dataformat på lang sigt**
    - Kommasepareret liste i ét felt er pragmatisk, men ikke ideel til kompleks fremtidig logik.
-   - En normaliseret løsning (fx separat tabel for valgte profiler) vil være mere skalerbar.
+   - En normaliseret løsning (f.eks. separat tabel for valgte profiler) vil være mere skalerbar.
 
 3. **Manglende automatiske tests**
    - De nye regler er verificeret manuelt via API/UI.

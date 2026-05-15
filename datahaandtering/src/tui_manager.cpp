@@ -128,7 +128,7 @@ void TuiManager::list_profiles() const {
     const auto profiles = db_manager_.list_profiles();
     std::cout << "\nProfiler:\n";
     for (const auto& p : profiles) {
-        std::cout << " - " << p.name << " (" << p.crop_type << "), luftfugtighed ["
+        std::cout << " - " << p.name << ", luftfugtighed ["
                   << p.min_humidity_air << ", " << p.max_humidity_air << "], jordfugtighed ["
                   << p.min_humidity_soil << ", " << p.max_humidity_soil
                   << "], interval=" << p.interval_sec << " sek\n";
@@ -171,14 +171,12 @@ void TuiManager::create_profile() {
     shared::Profile profile;
     profile.is_default = false;
 
-    std::cout << "Profilnavn: ";
+    std::cout << "Afgrøde-type (unikt profilnavn): ";
     std::getline(std::cin, profile.name);
     if (profile.name.empty()) {
         std::cout << "Annulleret.\n";
         return;
     }
-    std::cout << "Afgrøde-type: ";
-    std::getline(std::cin, profile.crop_type);
 
     std::cout << "Minimum luftfugtighed: ";
     std::cin >> profile.min_humidity_air;

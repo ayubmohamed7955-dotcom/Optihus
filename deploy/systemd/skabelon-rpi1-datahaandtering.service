@@ -1,0 +1,25 @@
+# Optihus — Pi 1 (datahåndtering)
+#
+# FØR DU KOPIERER til /etc/systemd/system/:
+#   Erstat ALLE: __RPI1_LINUX_BRUGERNAVN__
+#   med dit login på DENNE Pi (kør: whoami)
+#
+# Eksempel: hvis whoami siger "au756666", bliver ExecStart:
+#   /home/au756666/Optihus/build/datahaandtering/datahaandtering
+#
+[Unit]
+Description=Optihus datahåndtering (Pi 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RPI1_LINUX_BRUGERNAVN__
+Group=__RPI1_LINUX_BRUGERNAVN__
+ExecStart=/home/__RPI1_LINUX_BRUGERNAVN__/Optihus/build/datahaandtering/datahaandtering
+WorkingDirectory=/home/__RPI1_LINUX_BRUGERNAVN__/Optihus
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

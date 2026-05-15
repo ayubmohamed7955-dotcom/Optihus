@@ -1,5 +1,6 @@
 #include "hw/plant_box.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -61,6 +62,18 @@ void PlantBox::setMinimumThreshold(int value) {
 void PlantBox::setSkipWaterAtOrAbovePct(int value) {
     if (value >= 0 && value <= 100) {
         skipWaterAtOrAbovePct_.store(value);
+    }
+}
+
+void PlantBox::setPumpDurationSec(int value) {
+    if (value >= 1 && value <= 3600) {
+        pumpDurationSec_.store(value);
+    }
+}
+
+void PlantBox::setHysteresisSec(int value) {
+    if (value >= 0 && value <= 864000) {
+        hysteresisSec_.store(value);
     }
 }
 
@@ -135,9 +148,11 @@ void PlantBox::monitorLoop() {
         const auto now = std::chrono::steady_clock::now();
 
         if (avg <= min_water && avg < max_soil && now >= nextPumpAllowed_) {
-            nextPumpAllowed_ = now + std::chrono::minutes(10);
+            const int pump_sec = pumpDurationSec_.load();
+            const int hyst_sec = hysteresisSec_.load();
+            nextPumpAllowed_ = now + std::chrono::seconds(hyst_sec);
             setPumpState(true);
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::seconds(std::max(1, pump_sec)));
             setPumpState(false);
         }
     }

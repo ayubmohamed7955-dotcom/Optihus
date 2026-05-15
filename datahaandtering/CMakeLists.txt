@@ -18,10 +18,18 @@ target_include_directories(datahaandtering
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 
+if(TARGET SQLite3::SQLite3)
+    set(OPTIHUS_SQLITE3_TARGET SQLite3::SQLite3)
+elseif(TARGET SQLite::SQLite3)
+    set(OPTIHUS_SQLITE3_TARGET SQLite::SQLite3)
+else()
+    message(FATAL_ERROR "SQLite3 imported target not found (expected SQLite3::SQLite3 or SQLite::SQLite3)")
+endif()
+
 target_link_libraries(datahaandtering
     PRIVATE
         optihus_shared
-        SQLite::SQLite3
+        ${OPTIHUS_SQLITE3_TARGET}
         Threads::Threads
 )
 

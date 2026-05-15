@@ -16,6 +16,8 @@ public:
 
     void setMinimumThreshold(int value);
     void setSkipWaterAtOrAbovePct(int value);
+    void setPumpDurationSec(int value);
+    void setHysteresisSec(int value);
 
     float getCurrentAverageMoisture() const;
     bool isPumpOn() const;
@@ -35,6 +37,8 @@ private:
 
     std::atomic<int> minimumThreshold_ {35};
     std::atomic<int> skipWaterAtOrAbovePct_ {100};
+    std::atomic<int> pumpDurationSec_ {1};
+    std::atomic<int> hysteresisSec_ {600};
     int airValue_ {1600};
     int waterValue_ {400};
 

@@ -7,14 +7,14 @@ Fokus er stabil drift, tydelig rollefordeling og enkel fejlsøgning.
 
 Optihus består af to noder:
 
-- **Datahåndtering (Pi 1, server/AP-node)**: AP, TCP-server, database, logging, central backend-styring og browser-UI.
+- **Datahåndtering (Pi 1, server/AP-node)**: AP, TCP-server, database, logging, central backend-styring og Web ui.
 - **Miljøstyring (Pi 2, klient-node)**: TCP-klient/controller med sensor/aktuator-logik.
 
 Målet er lokal, robust kommunikation mellem noderne uden cloud-afhængighed.
 
 Brugerflader:
 
-- Browser UI er primær interface for status og kontrol.
+- Web ui er primær interface for status og kontrol.
 - TUI er fallback/admin.
 - Grafana er valgfri read-only visning (aldrig i kontrolstien).
 
@@ -111,7 +111,7 @@ Typisk årsag: forkert `server_host` eller server ikke aktiv.
 Tjek:
 
 1. Kører `datahaandtering`?
-2. Er klient sat til server-IP (fx `192.168.4.1`)?
+2. Er klient sat til server-IP (f.eks. `192.168.4.1`)?
 3. Er porten stadig `5000`?
 
 ### Forbindelse opstår ikke i AP-mode
@@ -171,7 +171,7 @@ Denne del er til en bruger uden teknisk baggrund.
 ### Hvis noget ikke virker
 
 1. Genstart først klienten.
-2. Hvis stadig fejl: genstart begge Pi’er.
+2. Hvis stadig fejl: genstart begge Pi-enheder.
 3. Hvis stadig fejl: kontakt en developer og oplys:
    - tidspunkt for fejl
    - hvad du gjorde lige før fejlen

@@ -1,0 +1,24 @@
+[Unit]
+Description=Optihus miljøstyring (TCP-klient til Pi 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+#
+# --- Typisk layout: samme clone som ~/Optihus ---
+# Binary fra tree: build/miljoestyring/miljoestyring
+# miljoestyring_config.json SKAL ligge i WorkingDirectory ved start.
+ExecStart=/home/pi/Optihus/build/miljoestyring/miljoestyring
+WorkingDirectory=/home/pi/Optihus
+#
+# Alternativ: dedikeret mappe med kun binary + JSON
+# ExecStart=/opt/optihus/miljoestyring/miljoestyring
+# WorkingDirectory=/opt/optihus/miljoestyring
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

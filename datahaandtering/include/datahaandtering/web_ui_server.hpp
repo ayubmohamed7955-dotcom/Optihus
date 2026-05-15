@@ -81,6 +81,9 @@ private:
     std::string last_control_action_ {"none"};
     std::string last_control_ts_ {"never"};
     bool last_control_queued_ {false};
+    std::string last_set_config_profiles_csv_;
+    bool last_set_config_queued_ok_ {false};
+    std::string last_set_config_ts_ {"never"};
 };
 
 }  // namespace datahaandtering

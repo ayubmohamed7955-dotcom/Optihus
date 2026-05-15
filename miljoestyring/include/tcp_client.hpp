@@ -24,6 +24,7 @@ public:
     bool connect();
     void disconnect();
     bool is_connected() const;
+    bool is_reader_running() const;
 
     void start_reader(shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound);
     void stop_reader();

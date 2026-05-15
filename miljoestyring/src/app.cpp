@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -23,6 +24,8 @@
 
 namespace miljoestyring {
 namespace {
+
+constexpr int kReconnectAttemptsBeforeWifiRecovery = 3;
 
 struct NetworkConfig {
     std::string host {"192.168.4.1"};
@@ -51,6 +54,14 @@ NetworkConfig load_network_config() {
     }
     return cfg;
 }
+
+#if defined(__linux__)
+void attempt_wifi_recovery() {
+    shared::log_warn("miljoestyring", "Attempting Wi-Fi recovery (nmcli radio on + rescan)");
+    (void)std::system("nmcli radio wifi on >/dev/null 2>&1");
+    (void)std::system("nmcli dev wifi rescan >/dev/null 2>&1");
+}
+#endif
 
 }  // namespace
 
@@ -85,14 +96,24 @@ int App::run() {
 
     auto reconnect = [&]() {
         client.disconnect();
+        int attempts = 0;
         while (!client.connect()) {
+            ++attempts;
             shared::log_warn(
                 "miljoestyring",
                 "Could not connect to server. Retrying in "
                     + std::to_string(shared::constants::kReconnectDelaySec)
                     + " seconds"
             );
+#if defined(__linux__)
+            if (attempts % kReconnectAttemptsBeforeWifiRecovery == 0) {
+                attempt_wifi_recovery();
+            }
+#endif
             std::this_thread::sleep_for(std::chrono::seconds(shared::constants::kReconnectDelaySec));
+        }
+        if (attempts > 0) {
+            shared::log_info("miljoestyring", "Connection re-established after retry loop");
         }
         client.start_reader(inbound);
     };
@@ -100,6 +121,11 @@ int App::run() {
     reconnect();
 
     while (true) {
+        if (!client.is_connected() || !client.is_reader_running()) {
+            shared::log_warn("miljoestyring", "Connection lost. Reconnecting...");
+            reconnect();
+        }
+
         for (;;) {
             const auto msg = inbound.try_pop();
             if (!msg.has_value()) {
@@ -120,7 +146,15 @@ int App::run() {
         }
 
         const int sleep_sec = runtime.telemetry_interval_sec.load();
-        std::this_thread::sleep_for(std::chrono::seconds(std::max(1, sleep_sec)));
+        const int bounded_sleep = std::max(1, sleep_sec);
+        for (int waited = 0; waited < bounded_sleep; ++waited) {
+            if (!client.is_connected() || !client.is_reader_running()) {
+                shared::log_warn("miljoestyring", "Connection lost during wait. Reconnecting...");
+                reconnect();
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
     }
 }
 

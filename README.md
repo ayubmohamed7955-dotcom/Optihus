@@ -2,7 +2,7 @@
 
 Optihus is a two-node greenhouse control project built around a persistent TCP link:
 
-- `datahaandtering-rpi` (Pi 1, central node): AP, TCP server (`5000`), SQLite, logging, backend command handling, browser UI (`8080`).
+- `datahaandtering-rpi` (Pi 1, central node): AP, TCP server (`5000`), SQLite, logging, backend command handling, Web ui (`8080`).
 - `miljoestyring-rpi` (Pi 2, control node): TCP client/controller, sensor/actuator control loop, reconnect/retry until Pi 1 is reachable.
 
 This repository is intended to be cloned on both devices and built locally.
@@ -34,9 +34,16 @@ Optihus/
 |  |- README.md
 |  |- init.sql
 |  `- seed_profiles.sql
+|- deploy/
+|  |- README.md
+|  |- boot-og-netvaerk-da.md
+|  `- systemd/
+|     |- optihus-datahaandtering.service.example
+|     `- optihus-miljoestyring.service.example
 `- docs/
    |- README.md
    |- md-struktur.md
+   |- optihus-fuld-forklaring-dansk.md
    |- quickstart-for-team-da.md
    |- integration-test-checklist-da.md
    |- architecture.md
@@ -52,10 +59,11 @@ Notes:
 
 If you are new to the project, use this order:
 
-1. `docs/quickstart-for-team-da.md` (simple start/stop guide)
-2. `docs/integration-test-checklist-da.md` (how to verify TCP works)
-3. `docs/architecture.md` (technical overview)
-4. `docs/optihus-dokumentation-udkast.md` (report draft, Danish)
+1. `docs/optihus-fuld-forklaring-dansk.md` (complete Danish explanation; **section 3** is the structural overview with diagrams)
+2. `docs/quickstart-for-team-da.md` (simple start/stop guide)
+3. `docs/integration-test-checklist-da.md` (how to verify TCP works)
+4. `docs/architecture.md` (technical overview)
+5. `docs/optihus-dokumentation-udkast.md` (report draft, Danish)
 
 ## Current validated network mode
 
@@ -63,7 +71,7 @@ The main demo mode is fixed AP mode:
 
 - Server AP IP: `192.168.4.1`
 - TCP port: `5000`
-- Browser UI port: `8080`
+- Web ui port: `8080`
 - Protocol: JSON-lines (one JSON object per line)
 
 Cross-device TCP has been tested in two network scenarios:
@@ -84,7 +92,7 @@ Cross-device TCP has been tested in two network scenarios:
 ### Datahåndtering node only
 
 - `libncurses-dev`
-- Grafana + `frser-sqlite-datasource` (optional for dashboards)
+- Grafana + SQLite datasource plugin (exact package depends on your Grafana version; optional dashboards)
 
 ## Build
 
@@ -104,7 +112,7 @@ cmake --build build -j4
 Expected startup log includes:
 
 - `Listening on port 5000`
-- `Browser UI listening on port 8080`
+- `Web ui listening on port 8080`
 
 ### 2) Client (Miljøstyring node)
 
@@ -138,12 +146,12 @@ Connect laptop to Pi 1 AP and open:
 Fallback procedure if interface does not open automatically:
 
 1. Open browser manually and go to `http://192.168.4.1:8080`.
-2. If browser UI is not reachable, run local fallback/admin TUI on Pi 1:
+2. If Web ui is not reachable, run local fallback/admin TUI on Pi 1:
    - `./build/datahaandtering/datahaandtering --tui`
 
 Interface policy:
 
-- Browser UI is primary for status/control.
+- Web ui is primary for status/control.
 - TUI is fallback/admin only.
 - Grafana is optional read-only overview (never command/control path).
 
@@ -189,7 +197,9 @@ Core tables:
 ## Documentation map
 
 - Main docs index: `docs/README.md`
+- Full Danish system explanation: `docs/optihus-fuld-forklaring-dansk.md`
 - Technical architecture: `docs/architecture.md`
 - Danish operations/report draft: `docs/optihus-dokumentation-udkast.md`
 - Non-technical quick guide (Danish): `docs/quickstart-for-team-da.md`
 - Integration checklist (Danish): `docs/integration-test-checklist-da.md`
+- Raspberry Pi boot / systemd / network (Danish): `deploy/boot-og-netvaerk-da.md`

@@ -49,6 +49,8 @@ public:
 
     bool load_active_config(shared::ActiveConfig& out_config);
     bool save_active_config(const shared::ActiveConfig& config, const std::string& timestamp_utc);
+    /// ISO-8601 timestamp for row id=1, or empty if missing.
+    std::string read_active_config_timestamp_utc() const;
 
     const std::string& db_path() const;
 
@@ -58,7 +60,7 @@ private:
 
     std::string db_path_;
     sqlite3* db_ {nullptr};
-    std::mutex db_mutex_;
+    mutable std::mutex db_mutex_;
 };
 
 }  // namespace datahaandtering

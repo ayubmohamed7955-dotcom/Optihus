@@ -54,9 +54,9 @@ int main(int argc, char** argv) {
     const auto ensure_default_profiles = [&db_manager]() {
         const auto now = shared::now_utc_iso8601();
         const std::array<shared::Profile, 3> defaults {
-            shared::Profile {"tomato", "Tomato", 55.0, 75.0, 35.0, 60.0, 900, true},
-            shared::Profile {"cucumber", "Cucumber", 60.0, 85.0, 45.0, 70.0, 900, true},
-            shared::Profile {"chili", "Chili", 50.0, 70.0, 30.0, 55.0, 900, true},
+            shared::Profile {"tomato", 55.0, 75.0, 35.0, 60.0, 60, true},
+            shared::Profile {"cucumber", 60.0, 85.0, 45.0, 70.0, 60, true},
+            shared::Profile {"chili", 50.0, 70.0, 30.0, 55.0, 60, true},
         };
         for (const auto& profile : defaults) {
             db_manager.upsert_profile(profile, now);

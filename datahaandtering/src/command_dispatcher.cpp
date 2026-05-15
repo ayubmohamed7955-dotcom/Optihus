@@ -111,6 +111,10 @@ nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
             {"label", box.label},
             {"slot", box.slot},
             {"is_active", box.is_active},
+            {"min_soil_pct", box.min_soil_pct},
+            {"max_soil_pct", box.max_soil_pct},
+            {"pump_duration_sec", box.pump_duration_sec},
+            {"hysteresis_sec", box.hysteresis_sec},
         });
     }
     return out;

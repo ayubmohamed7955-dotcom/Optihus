@@ -2,7 +2,8 @@ build/
 
 # Local CMake/Ninja build trees
 build-windows/
-build-windows-tcp/
+# Andre lokale build-mapper, fx build-windows-data, build-windows-tcp (undgår staged artefakter)
+build-windows-*/
 cmake-build-*/
 
 # CMake/Ninja generated files

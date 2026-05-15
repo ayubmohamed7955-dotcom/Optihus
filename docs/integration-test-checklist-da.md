@@ -28,9 +28,20 @@ Resultat: **Pass / Fail**
 - [ ] Klient har `192.168.4.x` adresse
 - [ ] `server_host` sat til `192.168.4.1`
 - [ ] TCP exchange gennemført
-- [ ] Browser UI tilgængelig på `http://192.168.4.1:8080`
+- [ ] Web ui tilgængelig på `http://192.168.4.1:8080`
 - [ ] Hvis UI ikke åbner automatisk: manuel åbning af `http://192.168.4.1:8080` virker
 - [ ] Fallback/admin TUI kan startes på Pi 1 med `./build/datahaandtering/datahaandtering --tui`
+
+Resultat: **Pass / Fail**
+
+## Test D - AP tabt og gendannet (recovery)
+
+- [ ] Start server + klient og bekræft normal forbindelse
+- [ ] Sluk server/AP midlertidigt
+- [ ] Bekræft klient fortsætter reconnect-forsøg (ingen manuel restart)
+- [ ] Start server/AP igen
+- [ ] Bekræft klient reconnecter automatisk
+- [ ] Bekræft server logger ny forbindelse fra klient-IP
 
 Resultat: **Pass / Fail**
 

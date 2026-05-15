@@ -24,6 +24,7 @@ Hver hovedmappe har en kort `README.md`, som forklarer:
   - database scripts
 - `docs/*.md`
   - tværgående guides, arkitektur, test og rapport
+  - **`optihus-fuld-forklaring-dansk.md`**: lang forklaring på dansk for ikke-IT og blandet publikum (hele systemet). **Kapitel 3** samler struktur, roller og diagrammer (tekst og Mermaid, som GitHub og GitLab viser i `.md`-filer)
 
 ## Hvorfor denne struktur hjælper
 

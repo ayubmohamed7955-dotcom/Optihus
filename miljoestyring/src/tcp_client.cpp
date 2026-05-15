@@ -147,6 +147,10 @@ bool TcpClient::is_connected() const {
 #endif
 }
 
+bool TcpClient::is_reader_running() const {
+    return reader_run_.load();
+}
+
 void TcpClient::start_reader(shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound) {
     stop_reader();
     inbound_queue_ = &inbound;

@@ -8,7 +8,7 @@ Få Optihus i drift med mindst mulig teknik:
 
 - Datahåndtering kører som server
 - Miljøstyring forbinder som klient
-- Browser UI på datahåndtering er primær brugerflade
+- Web ui på datahåndtering er primær brugerflade
 - Forbindelsen er OK når begge viser forventede linjer
 
 ## Før du starter
@@ -57,18 +57,18 @@ Systemet virker når:
 1. server lytter på port `5000`
 2. klient forbinder til serverens IP
 3. server logger klientens IP
-4. browser UI åbner på `http://192.168.4.1:8080` fra laptop på AP
+4. Web ui åbner på `http://192.168.4.1:8080` fra laptop på AP
 
 ## Interface-regler
 
-- Browser UI bruges til normal status og kontrol.
+- Web ui bruges til normal status og kontrol.
 - TUI bruges kun som fallback/admin.
 - Grafana bruges kun til read-only grafer/overblik (ikke kontrol).
 
 ## Fallback hvis UI ikke åbner automatisk
 
 1. Åbn browser manuelt og gå til `http://192.168.4.1:8080`.
-2. Hvis browser UI stadig ikke kan bruges, kør fallback/admin TUI på Pi 1:
+2. Hvis Web ui stadig ikke kan bruges, kør fallback/admin TUI på Pi 1:
 
 ```bash
 ./build/datahaandtering/datahaandtering --tui
@@ -82,4 +82,5 @@ Systemet virker når:
 
 - Tjek først at klientens `server_host` er serverens rigtige IP (ikke `127.0.0.1`).
 - Tjek at serveren stadig kører.
-- Start klienten igen.
+- Vent kort og se om klienten reconnecter automatisk.
+- Hvis den stadig ikke reconnecter: start klienten igen.

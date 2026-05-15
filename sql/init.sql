@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS plant_boxes (
     label TEXT NOT NULL,
     slot INTEGER NOT NULL UNIQUE,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    min_soil_pct REAL NOT NULL DEFAULT 35,
+    max_soil_pct REAL NOT NULL DEFAULT 100,
+    pump_duration_sec INTEGER NOT NULL DEFAULT 1,
+    hysteresis_sec INTEGER NOT NULL DEFAULT 600,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -72,9 +76,9 @@ CREATE TABLE IF NOT EXISTS plant_boxes (
 CREATE INDEX IF NOT EXISTS idx_plant_boxes_slot ON plant_boxes(slot);
 
 INSERT INTO active_config (id, timestamp, mode, profile_name, interval_sec, emergency_stop)
-SELECT 1, '1970-01-01T00:00:00Z', 'auto', 'tomato', 900, 0
+SELECT 1, '1970-01-01T00:00:00Z', 'auto', 'tomato', 60, 0
 WHERE NOT EXISTS (SELECT 1 FROM active_config WHERE id = 1);
 
 INSERT INTO plant_boxes (label, slot, is_active, created_at, updated_at)
-SELECT 'Drivkasse 1', 1, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
+SELECT 'Plantekasse 1', 1, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
 WHERE NOT EXISTS (SELECT 1 FROM plant_boxes);

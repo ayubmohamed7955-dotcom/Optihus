@@ -26,7 +26,7 @@ int App::run() {
         return 1;
     }
     if (!web_ui_server_.start()) {
-        shared::log_error("datahaandtering", "Failed to start browser UI server");
+        shared::log_error("datahaandtering", "Failed to start Web ui server");
         tcp_server_.stop();
         return 1;
     }
@@ -34,7 +34,7 @@ int App::run() {
 
     shared::log_info(
         "datahaandtering",
-        "Backend running. Browser UI: http://192.168.4.1:8080 (TUI optional via --tui)"
+        "Backend running. Web ui: http://192.168.4.1:8080 (TUI optional via --tui)"
     );
 
     while (running_) {
