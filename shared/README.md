@@ -23,4 +23,4 @@ Denne mappe indeholder fælles kode, som bruges af både server og klient.
 - `src/logger.cpp` - log output
 - `src/time_utils.cpp` - tidsformat i UTC
 
-Se også **`docs/optihus-fuld-forklaring-dansk.md`** afsnit om `shared/` for en rolig gennemgang uden kode.
+Se også **`vejledning/optihus-fuld-forklaring-dansk.md`** afsnit om `shared/` for en rolig gennemgang uden kode.

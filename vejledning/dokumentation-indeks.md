@@ -20,10 +20,10 @@ Denne mappe samler projektets dokumentation.
    - Forklaring af hvordan dokumenterne er organiseret
 8. `tui-til-browser-ui-forhindringer-og-loesninger.md`
    - Kritisk gennemgang af konvertering fra TUI til Web ui samt løste fejl
-9. `../deploy/boot-og-netvaerk-da.md`
-   - Autostart på Raspberry Pi (systemd `.service`) og AP / Wi‑Fi-klient i OS
-10. `../deploy/skabeloner-pi1-pi2-da.md`
-   - Systemd-skabeloner; Pi 2 kopierer `miljoestyring_config.json.example` fra repo-rod til `miljoestyring_config.json`
+9. `boot-og-netvaerk-da.md`
+   - Autostart på Raspberry Pi (systemd `.service`) og AP / Wi-Fi klient i OS
+10. `skabeloner-pi1-pi2-da.md`
+   - systemd skabeloner, Pi 2 kopierer `miljoestyring_config.json.example` fra repo-rod til `miljoestyring_config.json`
 
 ## Mål med dokumentationen
 

@@ -34,20 +34,25 @@ Optihus/
 |  |- README.md
 |  |- init.sql
 |  `- seed_profiles.sql
-|- deploy/
+|- vejledning/
 |  |- README.md
+|  |- dokumentation-indeks.md
 |  |- boot-og-netvaerk-da.md
+|  |- skabeloner-pi1-pi2-da.md
+|  |- md-struktur.md
+|  |- optihus-fuld-forklaring-dansk.md
+|  |- quickstart-for-team-da.md
+|  |- integration-test-checklist-da.md
+|  |- architecture.md
+|  |- optihus-dokumentation-udkast.md
+|  |- tui-til-browser-ui-forhindringer-og-loesninger.md
+|  |- windows/
+|  |  `- build-windows-da.md
 |  `- systemd/
 |     |- optihus-datahaandtering.service.example
-|     `- optihus-miljoestyring.service.example
-`- docs/
-   |- README.md
-   |- md-struktur.md
-   |- optihus-fuld-forklaring-dansk.md
-   |- quickstart-for-team-da.md
-   |- integration-test-checklist-da.md
-   |- architecture.md
-   `- optihus-dokumentation-udkast.md
+|     |- optihus-miljoestyring.service.example
+|     |- skabelon-rpi1-datahaandtering.service
+|     `- skabelon-rpi2-miljoestyring.service
 ```
 
 Notes:
@@ -59,11 +64,11 @@ Notes:
 
 If you are new to the project, use this order:
 
-1. `docs/optihus-fuld-forklaring-dansk.md` (complete Danish explanation; **section 3** is the structural overview with diagrams)
-2. `docs/quickstart-for-team-da.md` (simple start/stop guide)
-3. `docs/integration-test-checklist-da.md` (how to verify TCP works)
-4. `docs/architecture.md` (technical overview)
-5. `docs/optihus-dokumentation-udkast.md` (report draft, Danish)
+1. `vejledning/optihus-fuld-forklaring-dansk.md` (complete Danish explanation; **section 3** is the structural overview with diagrams)
+2. `vejledning/quickstart-for-team-da.md` (simple start/stop guide)
+3. `vejledning/integration-test-checklist-da.md` (how to verify TCP works)
+4. `vejledning/architecture.md` (technical overview)
+5. `vejledning/optihus-dokumentation-udkast.md` (report draft, Danish)
 
 ## Current validated network mode
 
@@ -196,10 +201,11 @@ Core tables:
 
 ## Documentation map
 
-- Main docs index: `docs/README.md`
-- Full Danish system explanation: `docs/optihus-fuld-forklaring-dansk.md`
-- Technical architecture: `docs/architecture.md`
-- Danish operations/report draft: `docs/optihus-dokumentation-udkast.md`
-- Non-technical quick guide (Danish): `docs/quickstart-for-team-da.md`
-- Integration checklist (Danish): `docs/integration-test-checklist-da.md`
-- Raspberry Pi boot / systemd / network (Danish): `deploy/boot-og-netvaerk-da.md`
+- Main docs index: `vejledning/dokumentation-indeks.md`
+- Full Danish system explanation: `vejledning/optihus-fuld-forklaring-dansk.md`
+- Technical architecture: `vejledning/architecture.md`
+- Danish operations/report draft: `vejledning/optihus-dokumentation-udkast.md`
+- Non-technical quick guide (Danish): `vejledning/quickstart-for-team-da.md`
+- Integration checklist (Danish): `vejledning/integration-test-checklist-da.md`
+- Raspberry Pi boot / systemd / network (Danish): `vejledning/boot-og-netvaerk-da.md`
+- Windows CMake build (Danish): `vejledning/windows/build-windows-da.md`

@@ -58,4 +58,4 @@ TUI er fallback/admin og erstatter ikke Web ui som primær brugerflade.
 
 ## Dybere forklaring (dansk, ikke-teknisk venlig)
 
-Se **`docs/optihus-fuld-forklaring-dansk.md`** i repo-roden: den gennemgår mapper, websiden, TCP, databasen, Grafana og hardware (pumpe, jordfugt, motor, luftfugt-temperatur-sensor) i et sprog, der også kan læses uden IT-baggrund.
+Se **`vejledning/optihus-fuld-forklaring-dansk.md`** i repo-roden: den gennemgår mapper, websiden, TCP, databasen, Grafana og hardware (pumpe, jordfugt, motor, luftfugt-temperatur-sensor) i et sprog, der også kan læses uden IT-baggrund.

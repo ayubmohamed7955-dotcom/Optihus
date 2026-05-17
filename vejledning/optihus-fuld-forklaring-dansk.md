@@ -155,7 +155,7 @@ Mapperne i Git matcher rollerne ovenfor:
 | **`miljoestyring/`** | Pi 2-program, plus **`hw/`** til sensor og aktuator |
 | **`shared/`** | **Fælles kode** mellem begge programmer (beskedformat, typer, porttal) |
 | **`sql/`** | Skema til databasen på Pi 1 |
-| **`docs/`** | Tekster som denne, tjeklister, arkitektur |
+| **`vejledning/`** | Tekster som denne, tjeklister, arkitektur, systemd-skabeloner |
 
 Rod-filer som **`CMakeLists.txt`** er **byggeopskrift**: den fortæller værktøjet, hvordan programmerne samles. Den er vigtig for udviklere, men ændrer ikke på den logiske tre-lags-fortælling ovenfor.
 
@@ -239,7 +239,7 @@ Bruges af begge programmer:
 - **`seed_profiles.sql`**  
   Valgfri startdata til profiler.
 
-### `docs/`
+### `vejledning/`
 
 Guides, arkitektur og denne fulde forklaring.
 
@@ -429,11 +429,11 @@ Der er ikke længere kildefiler i repoet, som bevidst ligger uden for `CMakeList
 
 ## 18. Hvor finder du mere?
 
-- **`docs/quickstart-for-team-da.md`**  
+- **`vejledning/quickstart-for-team-da.md`**  
   Meget korte trin til at starte og se at det virker.
-- **`docs/integration-test-checklist-da.md`**  
+- **`vejledning/integration-test-checklist-da.md`**  
   Tjekliste til netværksadfærd.
-- **`docs/architecture.md`**  
+- **`vejledning/architecture.md`**  
   Kortere teknisk arkitektur på engelsk.
 - **`datahaandtering/README.md`** og **`miljoestyring/README.md`**  
   Udviklernes hurtige reference.

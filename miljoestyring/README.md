@@ -66,4 +66,4 @@ Fra repo-rod: `cmake -B build && cmake --build build --target miljoestyring`
 
 ## Dybere forklaring (dansk)
 
-Hele systemet, herunder hvordan felt-loops, sensorer og `set_config` hænger sammen, er beskrevet **simpelt og kritisk** i **`docs/optihus-fuld-forklaring-dansk.md`**.
+Hele systemet, herunder hvordan felt-loops, sensorer og `set_config` hænger sammen, er beskrevet **simpelt og kritisk** i **`vejledning/optihus-fuld-forklaring-dansk.md`**.
