@@ -6,6 +6,9 @@ build-windows/
 build-windows-*/
 cmake-build-*/
 
+# Midlertidige review-/sammenligningskopier — ikke til versionering
+_tmp_miljostyring_review/
+
 # CMake/Ninja generated files
 CMakeCache.txt
 CMakeFiles/
