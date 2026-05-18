@@ -4,8 +4,6 @@
 #include <string>
 #include <string_view>
 
-namespace shared {
-
 enum class Mode {
     Auto,
     Manual
@@ -51,6 +49,8 @@ struct TelemetrySample {
     std::string pump_status {"off"};
     std::string motor_status {"closed"};
     std::string error_status {"none"};
+    /** Serialiseret JSON-objekt til drift/fejlsøgning (felt-node komponenter/forbindelse); tom = udelades på ledningen. */
+    std::string field_live_json;
 };
 
 inline std::string to_string(Mode mode) {
@@ -72,5 +72,3 @@ inline std::optional<Mode> mode_from_string(std::string_view value) {
     }
     return std::nullopt;
 }
-
-}  // namespace shared

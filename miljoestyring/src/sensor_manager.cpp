@@ -3,27 +3,27 @@
 #include "shared/time_utils.hpp"
 
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-#include "hw/motor.hpp"
-#include "hw/plant_box.hpp"
+#include "hw/Ventilation system/Motor.hpp"
+#include "hw/Watering system/PlantBox.hpp"
 #endif
 
 namespace miljoestyring {
 
-void SensorManager::set_hardware(miljoestyring::hw::Motor* motor, miljoestyring::hw::PlantBox* plant) {
+void SensorManager::set_hardware(Motor* motor, PlantBox* plant_box) {
     motor_ = motor;
-    plant_ = plant;
+    plant_box_ = plant_box;
 }
 
-shared::TelemetrySample SensorManager::read_sample(const ClientRuntimeState* runtime) const {
-    shared::TelemetrySample sample;
-    sample.timestamp_utc = shared::now_utc_iso8601();
+TelemetrySample SensorManager::read_sample(const ClientRuntimeState* runtime) const {
+    TelemetrySample sample;
+    sample.timestamp_utc = now_utc_iso8601();
 
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-    if (motor_ != nullptr && plant_ != nullptr) {
+    if (motor_ != nullptr && plant_box_ != nullptr) {
         sample.temperature_c = static_cast<double>(motor_->getCurrentTemp());
         sample.humidity_air = static_cast<double>(motor_->getCurrentHumid());
-        sample.humidity_soil = static_cast<double>(plant_->getCurrentAverageMoisture());
-        sample.pump_status = plant_->isPumpOn() ? "on" : "off";
+        sample.humidity_soil = static_cast<double>(plant_box_->getCurrentAverageMoisture());
+        sample.pump_status = plant_box_->isPumpOn() ? "on" : "off";
         sample.motor_status = motor_->isWindowOpen() ? "open" : "closed";
         if (runtime != nullptr && runtime->emergency_halt.load()) {
             sample.error_status = "emergency_stop";
@@ -47,4 +47,4 @@ shared::TelemetrySample SensorManager::read_sample(const ClientRuntimeState* run
     return sample;
 }
 
-}  // namespace miljoestyring
+}

@@ -7,19 +7,16 @@
 
 #include "shared/logger.hpp"
 
-namespace datahaandtering {
-
-namespace {
-int bind_text(sqlite3_stmt* stmt, int index, const std::string& value) {
+static int bind_text(sqlite3_stmt* stmt, int index, const std::string& value) {
     return sqlite3_bind_text(stmt, index, value.c_str(), -1, SQLITE_TRANSIENT);
 }
 
-std::string col_text(sqlite3_stmt* stmt, int index) {
+static std::string col_text(sqlite3_stmt* stmt, int index) {
     const unsigned char* raw = sqlite3_column_text(stmt, index);
     return raw == nullptr ? "" : reinterpret_cast<const char*>(raw);
 }
 
-bool telemetry_has_temperature_column(sqlite3* db) {
+static bool telemetry_has_temperature_column(sqlite3* db) {
     const char* sql = "PRAGMA table_info(telemetry);";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -37,7 +34,7 @@ bool telemetry_has_temperature_column(sqlite3* db) {
     return found;
 }
 
-bool telemetry_table_exists(sqlite3* db) {
+static bool telemetry_table_exists(sqlite3* db) {
     const char* sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='telemetry' LIMIT 1;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -48,7 +45,7 @@ bool telemetry_table_exists(sqlite3* db) {
     return exists;
 }
 
-bool plant_boxes_has_column(sqlite3* db, const char* column_name) {
+static bool plant_boxes_has_column(sqlite3* db, const char* column_name) {
     const char* sql = "PRAGMA table_info(plant_boxes);";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -64,7 +61,6 @@ bool plant_boxes_has_column(sqlite3* db, const char* column_name) {
     sqlite3_finalize(stmt);
     return found;
 }
-}  // namespace
 
 DatabaseManager::DatabaseManager(std::string db_path) : db_path_(std::move(db_path)) {}
 
@@ -80,7 +76,7 @@ bool DatabaseManager::open() {
 
     const int rc = sqlite3_open(db_path_.c_str(), &db_);
     if (rc != SQLITE_OK || db_ == nullptr) {
-        shared::log_error("database_manager", "sqlite3_open failed for " + db_path_);
+        log_error("database_manager", "sqlite3_open failed for " + db_path_);
         if (db_ != nullptr) {
             sqlite3_close(db_);
             db_ = nullptr;
@@ -96,19 +92,19 @@ bool DatabaseManager::open() {
             if (err != nullptr) {
                 sqlite3_free(err);
             }
-            shared::log_error("database_manager", "Failed to add telemetry.temperature_c column: " + msg);
+            log_error("database_manager", "Failed to add telemetry.temperature_c column: " + msg);
             sqlite3_close(db_);
             db_ = nullptr;
             return false;
         }
-        shared::log_info("database_manager", "Applied DB migration: telemetry.temperature_c");
+        log_info("database_manager", "Applied DB migration: telemetry.temperature_c");
     }
     if (!ensure_plant_boxes_schema_locked()) {
         sqlite3_close(db_);
         db_ = nullptr;
         return false;
     }
-    shared::log_info("database_manager", "Opened SQLite: " + db_path_);
+    log_info("database_manager", "Opened SQLite: " + db_path_);
     return true;
 }
 
@@ -119,13 +115,13 @@ void DatabaseManager::close() {
     }
     sqlite3_close(db_);
     db_ = nullptr;
-    shared::log_info("database_manager", "Closed SQLite");
+    log_info("database_manager", "Closed SQLite");
 }
 
 bool DatabaseManager::initialize_schema(const std::string& init_sql_path) {
     std::ifstream file(init_sql_path);
     if (!file.is_open()) {
-        shared::log_error("database_manager", "Could not open schema file: " + init_sql_path);
+        log_error("database_manager", "Could not open schema file: " + init_sql_path);
         return false;
     }
     std::stringstream buffer;
@@ -135,7 +131,7 @@ bool DatabaseManager::initialize_schema(const std::string& init_sql_path) {
 
 bool DatabaseManager::insert_telemetry(
     const std::string& timestamp_utc,
-    const shared::TelemetrySample& sample,
+    const TelemetrySample& sample,
     const std::string& source
 ) {
     std::lock_guard<std::mutex> lock(db_mutex_);
@@ -221,7 +217,7 @@ bool DatabaseManager::insert_command_history(
     return ok;
 }
 
-bool DatabaseManager::upsert_profile(const shared::Profile& profile, const std::string& timestamp_utc) {
+bool DatabaseManager::upsert_profile(const Profile& profile, const std::string& timestamp_utc) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     if (db_ == nullptr) {
         return false;
@@ -275,9 +271,9 @@ bool DatabaseManager::delete_profile(const std::string& profile_name) {
     return ok;
 }
 
-std::vector<shared::Profile> DatabaseManager::list_profiles() {
+std::vector<Profile> DatabaseManager::list_profiles() {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    std::vector<shared::Profile> result;
+    std::vector<Profile> result;
     if (db_ == nullptr) {
         return result;
     }
@@ -291,7 +287,7 @@ std::vector<shared::Profile> DatabaseManager::list_profiles() {
     }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        shared::Profile p;
+        Profile p;
         p.name = col_text(stmt, 0);
         p.min_humidity_air = sqlite3_column_double(stmt, 2);
         p.max_humidity_air = sqlite3_column_double(stmt, 3);
@@ -307,7 +303,7 @@ std::vector<shared::Profile> DatabaseManager::list_profiles() {
 }
 
 bool DatabaseManager::upsert_plant_box(
-    const shared::PlantBoxConfig& plant_box,
+    const PlantBoxConfig& plant_box,
     const std::string& timestamp_utc
 ) {
     std::lock_guard<std::mutex> lock(db_mutex_);
@@ -333,7 +329,7 @@ bool DatabaseManager::upsert_plant_box(
         const int other_active = sqlite3_column_int(count_stmt, 0);
         sqlite3_finalize(count_stmt);
         if (other_active > 0) {
-            shared::log_warn("database_manager",
+            log_warn("database_manager",
                               "Rejected plant_boxes upsert: another row is already active (only one active allowed)");
             return false;
         }
@@ -403,9 +399,9 @@ bool DatabaseManager::delete_plant_box(int id) {
     return ok;
 }
 
-std::vector<shared::PlantBoxConfig> DatabaseManager::list_plant_boxes() {
+std::vector<PlantBoxConfig> DatabaseManager::list_plant_boxes() {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    std::vector<shared::PlantBoxConfig> result;
+    std::vector<PlantBoxConfig> result;
     if (db_ == nullptr) {
         return result;
     }
@@ -419,7 +415,7 @@ std::vector<shared::PlantBoxConfig> DatabaseManager::list_plant_boxes() {
     }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        shared::PlantBoxConfig plant_box;
+        PlantBoxConfig plant_box;
         plant_box.id = sqlite3_column_int(stmt, 0);
         plant_box.label = col_text(stmt, 1);
         plant_box.slot = sqlite3_column_int(stmt, 2);
@@ -434,7 +430,7 @@ std::vector<shared::PlantBoxConfig> DatabaseManager::list_plant_boxes() {
     return result;
 }
 
-bool DatabaseManager::load_active_config(shared::ActiveConfig& out_config) {
+bool DatabaseManager::load_active_config(ActiveConfig& out_config) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     if (db_ == nullptr) {
         return false;
@@ -449,7 +445,7 @@ bool DatabaseManager::load_active_config(shared::ActiveConfig& out_config) {
     bool ok = false;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         const auto mode_str = col_text(stmt, 0);
-        const auto parsed = shared::mode_from_string(mode_str);
+        const auto parsed = mode_from_string(mode_str);
         if (parsed.has_value()) {
             out_config.mode = *parsed;
             out_config.profile_name = col_text(stmt, 1);
@@ -482,7 +478,7 @@ std::string DatabaseManager::read_active_config_timestamp_utc() const {
 }
 
 bool DatabaseManager::save_active_config(
-    const shared::ActiveConfig& config,
+    const ActiveConfig& config,
     const std::string& timestamp_utc
 ) {
     std::lock_guard<std::mutex> lock(db_mutex_);
@@ -503,7 +499,7 @@ bool DatabaseManager::save_active_config(
     }
 
     bind_text(stmt, 1, timestamp_utc);
-    bind_text(stmt, 2, shared::to_string(config.mode));
+    bind_text(stmt, 2, to_string(config.mode));
     bind_text(stmt, 3, config.profile_name);
     sqlite3_bind_int(stmt, 4, config.interval_sec);
     sqlite3_bind_int(stmt, 5, config.emergency_stop ? 1 : 0);
@@ -529,7 +525,7 @@ bool DatabaseManager::exec_sql(const std::string& sql) {
         if (error_message != nullptr) {
             sqlite3_free(error_message);
         }
-        shared::log_error("database_manager", "SQL execution failed: " + error);
+        log_error("database_manager", "SQL execution failed: " + error);
         return false;
     }
     return true;
@@ -563,7 +559,7 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
         if (error_message != nullptr) {
             sqlite3_free(error_message);
         }
-        shared::log_error("database_manager", "Plant boxes schema setup failed: " + error);
+        log_error("database_manager", "Plant boxes schema setup failed: " + error);
         return false;
     }
 
@@ -587,19 +583,19 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
             if (alter_err != nullptr) {
                 sqlite3_free(alter_err);
             }
-            shared::log_error("database_manager",
+            log_error("database_manager",
                                 std::string("plant_boxes migration failed for ") + m.name + ": " + msg);
             return false;
         }
         sqlite3_free(alter_err);
-        shared::log_info("database_manager", std::string("Applied plant_boxes migration: ") + m.name);
+        log_info("database_manager", std::string("Applied plant_boxes migration: ") + m.name);
     }
 
     {
         const char* active_ids_sql = "SELECT id FROM plant_boxes WHERE is_active = 1 ORDER BY id ASC;";
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db_, active_ids_sql, -1, &stmt, nullptr) != SQLITE_OK) {
-            shared::log_error("database_manager", "Failed to prepare plant_boxes active id query");
+            log_error("database_manager", "Failed to prepare plant_boxes active id query");
             return false;
         }
         std::vector<int> active_ids;
@@ -614,19 +610,19 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
                 "UPDATE plant_boxes SET is_active = 0, updated_at = ? WHERE is_active = 1 AND id != ?;";
             sqlite3_stmt* u = nullptr;
             if (sqlite3_prepare_v2(db_, deactivate_sql, -1, &u, nullptr) != SQLITE_OK) {
-                shared::log_error("database_manager", "Failed to prepare plant_boxes multi-active repair");
+                log_error("database_manager", "Failed to prepare plant_boxes multi-active repair");
                 return false;
             }
             const std::string repair_ts = "1970-01-01T00:00:00Z";
             bind_text(u, 1, repair_ts);
             sqlite3_bind_int(u, 2, keep_id);
             if (sqlite3_step(u) != SQLITE_DONE) {
-                shared::log_error("database_manager", "Failed to repair multiple active plant_boxes");
+                log_error("database_manager", "Failed to repair multiple active plant_boxes");
                 sqlite3_finalize(u);
                 return false;
             }
             sqlite3_finalize(u);
-            shared::log_warn(
+            log_warn(
                 "database_manager",
                 std::string("plant_boxes had multiple active rows; kept id=") + std::to_string(keep_id) +
                     " active and deactivated the rest");
@@ -669,4 +665,3 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
     return seeded;
 }
 
-}  // namespace datahaandtering

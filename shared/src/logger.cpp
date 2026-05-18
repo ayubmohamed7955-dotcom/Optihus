@@ -6,12 +6,10 @@
 
 #include "shared/time_utils.hpp"
 
-namespace shared {
-namespace {
-std::mutex g_log_mutex;
-LogLevel g_min_log_level = LogLevel::Info;
+static std::mutex g_log_mutex;
+static LogLevel g_min_log_level = LogLevel::Info;
 
-std::string_view level_to_string(LogLevel level) {
+static std::string_view level_to_string(LogLevel level) {
     switch (level) {
         case LogLevel::Info:
             return "INFO";
@@ -22,7 +20,6 @@ std::string_view level_to_string(LogLevel level) {
     }
     return "INFO";
 }
-}  // namespace
 
 void set_min_log_level(LogLevel level) {
     std::lock_guard<std::mutex> lock(g_log_mutex);
@@ -50,5 +47,3 @@ void log_warn(std::string_view component, std::string_view message) {
 void log_error(std::string_view component, std::string_view message) {
     log(LogLevel::Error, component, message);
 }
-
-}  // namespace shared

@@ -24,6 +24,11 @@ Optihus/
 |  |- README.md
 |  |- CMakeLists.txt
 |  |- include/
+|  |  |- set_config_store.hpp
+|  |  `- hw/
+|  |     |- board_pins.hpp
+|  |     |- Ventilation system/
+|  |     `- Watering system/
 |  `- src/
 |- shared/
 |  |- README.md
@@ -34,6 +39,12 @@ Optihus/
 |  |- README.md
 |  |- init.sql
 |  `- seed_profiles.sql
+|- docs/
+|  `- rapport/
+|     |- README.md
+|     |- RAPPORT.md
+|     `- diagrams/
+|        `- optihus-system.puml
 |- vejledning/
 |  |- README.md
 |  |- dokumentation-indeks.md
@@ -42,6 +53,8 @@ Optihus/
 |  |- md-struktur.md
 |  |- optihus-fuld-forklaring-dansk.md
 |  |- quickstart-for-team-da.md
+|  |- setup-pi1-datahaandtering-da.md
+|  |- setup-pi2-miljoestyring-da.md
 |  |- integration-test-checklist-da.md
 |  |- architecture.md
 |  |- optihus-dokumentation-udkast.md
@@ -65,10 +78,12 @@ Notes:
 If you are new to the project, use this order:
 
 1. `vejledning/optihus-fuld-forklaring-dansk.md` (complete Danish explanation; **section 3** is the structural overview with diagrams)
-2. `vejledning/quickstart-for-team-da.md` (simple start/stop guide)
-3. `vejledning/integration-test-checklist-da.md` (how to verify TCP works)
-4. `vejledning/architecture.md` (technical overview)
-5. `vejledning/optihus-dokumentation-udkast.md` (report draft, Danish)
+2. `docs/rapport/RAPPORT.md` + `docs/rapport/diagrams/optihus-system.puml` (report text and PlantUML architecture diagrams)
+3. `vejledning/quickstart-for-team-da.md` (simple start/stop guide)
+4. **`vejledning/setup-pi1-datahaandtering-da.md`** and **`vejledning/setup-pi2-miljoestyring-da.md`** (step-by-step Pi setup; assumes repo already on device)
+5. `vejledning/integration-test-checklist-da.md` (how to verify TCP works)
+6. `vejledning/architecture.md` (technical overview)
+7. `vejledning/optihus-dokumentation-udkast.md` (report draft, Danish)
 
 ## Current validated network mode
 
@@ -201,6 +216,7 @@ Core tables:
 
 ## Documentation map
 
+- Rapport + PlantUML‑diagrammer: **`docs/rapport/`** ([RAPPORT.md](docs/rapport/RAPPORT.md), [diagrams/optihus-system.puml](docs/rapport/diagrams/optihus-system.puml))
 - Main docs index: `vejledning/dokumentation-indeks.md`
 - Full Danish system explanation: `vejledning/optihus-fuld-forklaring-dansk.md`
 - Technical architecture: `vejledning/architecture.md`

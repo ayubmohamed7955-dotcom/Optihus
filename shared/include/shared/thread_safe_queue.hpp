@@ -7,8 +7,6 @@
 #include <queue>
 #include <utility>
 
-namespace shared {
-
 template <typename T>
 class ThreadSafeQueue {
 public:
@@ -74,5 +72,3 @@ private:
     std::condition_variable cv_;
     bool shutdown_ {false};
 };
-
-}  // namespace shared

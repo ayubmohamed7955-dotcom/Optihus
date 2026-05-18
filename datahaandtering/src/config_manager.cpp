@@ -3,11 +3,9 @@
 #include "shared/constants.hpp"
 #include "shared/time_utils.hpp"
 
-namespace datahaandtering {
-
 ConfigManager::ConfigManager(DatabaseManager& db_manager) : db_manager_(db_manager) {
     active_config_.profile_name = "tomato";
-    active_config_.interval_sec = shared::constants::kDefaultIntervalSec;
+    active_config_.interval_sec = kDefaultIntervalSec;
 }
 
 bool ConfigManager::load_active_config() {
@@ -17,15 +15,15 @@ bool ConfigManager::load_active_config() {
 
 bool ConfigManager::save_active_config() {
     std::lock_guard<std::mutex> lock(config_mutex_);
-    return db_manager_.save_active_config(active_config_, shared::now_utc_iso8601());
+    return db_manager_.save_active_config(active_config_, now_utc_iso8601());
 }
 
-shared::ActiveConfig ConfigManager::current_config() const {
+ActiveConfig ConfigManager::current_config() const {
     std::lock_guard<std::mutex> lock(config_mutex_);
     return active_config_;
 }
 
-void ConfigManager::set_mode(shared::Mode mode) {
+void ConfigManager::set_mode(Mode mode) {
     std::lock_guard<std::mutex> lock(config_mutex_);
     active_config_.mode = mode;
 }
@@ -45,4 +43,3 @@ void ConfigManager::set_emergency_stop(bool emergency_stop) {
     active_config_.emergency_stop = emergency_stop;
 }
 
-}  // namespace datahaandtering

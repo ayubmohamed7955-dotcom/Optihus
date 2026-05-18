@@ -1,14 +1,9 @@
 # Optihus — Pi 2 (miljøstyring, klient mod Pi 1)
 #
-# FØR DU KOPIERER til /etc/systemd/system/:
-#   Erstat ALLE: __RPI2_LINUX_BRUGERNAVN__
-#   med dit login på DENNE Pi (Pi 2) — kør: whoami
-#   (Det kan være et ANDET navn end på Pi 1; det er normalt.)
+# FØR du kopierer til /etc/systemd/system/:
+#   Erstat ALLE forekomster af __RPI2_LINUX_BRUGERNAVN__ med output af whoami på denne Pi.
 #
-# FORBINDELSE TIL PI 1 — IKKE i denne fil:
-#   Læg miljoestyring_config.json i WorkingDirectory (Optihus-roden).
-#   Kopier repo-rod-filen miljoestyring_config.json.example -> miljoestyring_config.json
-#   og sæt server_host til Pi 1's IP/host som Pi 2 kan nå (fx 192.168.4.1 ved AP).
+# Klient mål‑server og TCP‑port samles fra shared/constants.hpp (kDefaultDataServerHost, kTcpPort).
 #
 [Unit]
 Description=Optihus miljøstyring (Pi 2)

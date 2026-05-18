@@ -10,10 +10,7 @@
 #include "shared/logger.hpp"
 #include "shared/time_utils.hpp"
 
-namespace datahaandtering {
-
-namespace {
-std::vector<std::string> split_csv(const std::string& value) {
+static std::vector<std::string> split_csv(const std::string& value) {
     std::vector<std::string> out;
     std::stringstream ss(value);
     std::string item;
@@ -38,8 +35,8 @@ struct AggregatedBounds {
     double max_humidity_soil {0.0};
 };
 
-bool aggregate_bounds_if_compatible(
-    const std::vector<shared::Profile>& selected_profiles,
+static bool aggregate_bounds_if_compatible(
+    const std::vector<Profile>& selected_profiles,
     AggregatedBounds& out_bounds
 ) {
     if (selected_profiles.empty()) {
@@ -61,18 +58,18 @@ bool aggregate_bounds_if_compatible(
         out_bounds.min_humidity_soil <= out_bounds.max_humidity_soil;
 }
 
-bool build_bounds_payload(
+static bool build_bounds_payload(
     DatabaseManager& db_manager,
     const std::vector<std::string>& profile_names,
     nlohmann::json& out_bounds,
     nlohmann::json& out_temp_bounds
 ) {
     const auto all = db_manager.list_profiles();
-    std::vector<shared::Profile> selected;
+    std::vector<Profile> selected;
     selected.reserve(profile_names.size());
     for (const auto& name : profile_names) {
         const auto it =
-            std::find_if(all.begin(), all.end(), [&](const shared::Profile& p) { return p.name == name; });
+            std::find_if(all.begin(), all.end(), [&](const Profile& p) { return p.name == name; });
         if (it != all.end()) {
             selected.push_back(*it);
         }
@@ -82,7 +79,7 @@ bool build_bounds_payload(
     }
     AggregatedBounds bounds {};
     if (!aggregate_bounds_if_compatible(selected, bounds)) {
-        shared::log_warn(
+        log_warn(
             "command_dispatcher",
             "Selected profiles have no overlapping humidity bounds; omitting bounds from set_config"
         );
@@ -102,7 +99,7 @@ bool build_bounds_payload(
     return true;
 }
 
-nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
+static nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
     const auto boxes = db_manager.list_plant_boxes();
     nlohmann::json out = nlohmann::json::array();
     for (const auto& box : boxes) {
@@ -119,12 +116,11 @@ nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
     }
     return out;
 }
-}  // namespace
 
 CommandDispatcher::CommandDispatcher(
     ConfigManager& config_manager,
     DatabaseManager& db_manager,
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& outbound_queue
+    ThreadSafeQueue<MessageEnvelope>& outbound_queue
 )
     : config_manager_(config_manager), db_manager_(db_manager), outbound_queue_(outbound_queue) {}
 
@@ -135,7 +131,7 @@ bool CommandDispatcher::dispatch_current_config() {
     nlohmann::json temp_bounds;
     const bool have_bounds = build_bounds_payload(db_manager_, profile_names, bounds, temp_bounds);
 
-    shared::CommandPayload payload;
+    CommandPayload payload;
     payload.action = "set_config";
     payload.params = nlohmann::json {
         {"profile_name", config.profile_name},
@@ -152,14 +148,14 @@ bool CommandDispatcher::dispatch_current_config() {
 }
 
 bool CommandDispatcher::dispatch_emergency_stop(bool enabled) {
-    shared::CommandPayload payload;
+    CommandPayload payload;
     payload.action = enabled ? "emergency_stop" : "clear_emergency_stop";
     payload.params = nlohmann::json::object();
     return enqueue_command(payload, "queued");
 }
 
 bool CommandDispatcher::dispatch_manual_action(const std::string& action, const std::string& value) {
-    shared::CommandPayload payload;
+    CommandPayload payload;
     payload.action = action;
     payload.params = nlohmann::json {
         {"value", value}
@@ -168,15 +164,15 @@ bool CommandDispatcher::dispatch_manual_action(const std::string& action, const 
 }
 
 bool CommandDispatcher::enqueue_command(
-    const shared::CommandPayload& command_payload,
+    const CommandPayload& command_payload,
     const std::string& status
 ) {
-    shared::MessageEnvelope message = shared::make_message(
-        shared::MessageType::Command,
-        std::string(shared::constants::kSourceDatahaandtering),
-        shared::to_json_obj(command_payload),
+    MessageEnvelope message = make_message(
+        MessageType::Command,
+        std::string(kSourceDatahaandtering),
+        to_json_obj(command_payload),
         "",
-        shared::now_utc_iso8601()
+        now_utc_iso8601()
     );
 
     const bool queued = outbound_queue_.push(message);
@@ -184,10 +180,9 @@ bool CommandDispatcher::enqueue_command(
         message.ts_utc,
         command_payload.action,
         message.data.dump(),
-        std::string(shared::constants::kSourceDatahaandtering),
+        std::string(kSourceDatahaandtering),
         queued ? status : "dropped"
     );
     return queued;
 }
 
-}  // namespace datahaandtering

@@ -11,8 +11,6 @@
 #include "datahaandtering/database_manager.hpp"
 #include "datahaandtering/tcp_server.hpp"
 
-namespace datahaandtering {
-
 class WebUiServer {
 public:
     WebUiServer(
@@ -30,6 +28,8 @@ public:
     bool start();
     void stop();
     void note_client_hello(const std::string& timestamp_utc);
+    /** Seneste felt-node komponentoversigt fra telemetri (`field_live`), spejlet under GET /api/status → field_node. */
+    void note_field_live(std::string components_json, std::string telemetry_ts_utc);
 
 private:
     void accept_loop();
@@ -84,6 +84,6 @@ private:
     std::string last_set_config_profiles_csv_;
     bool last_set_config_queued_ok_ {false};
     std::string last_set_config_ts_ {"never"};
+    std::string last_field_live_components_json_ {"{}"};
+    std::string last_field_live_ts_ {"never"};
 };
-
-}  // namespace datahaandtering

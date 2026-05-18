@@ -9,8 +9,6 @@
 #include "shared/message.hpp"
 #include "shared/thread_safe_queue.hpp"
 
-namespace datahaandtering {
-
 class App {
 public:
     App(
@@ -18,23 +16,21 @@ public:
         WebUiServer& web_ui_server,
         TelemetryProcessor& telemetry_processor,
         CommandDispatcher& command_dispatcher,
-        shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound_queue,
-        shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue
+        ThreadSafeQueue<MessageEnvelope>& inbound_queue,
+        ThreadSafeQueue<MessageEnvelope>& telemetry_queue
     );
 
     int run();
     void request_stop();
 
 private:
-    void handle_message(const shared::MessageEnvelope& message);
+    void handle_message(const MessageEnvelope& message);
 
     TcpServer& tcp_server_;
     WebUiServer& web_ui_server_;
     TelemetryProcessor& telemetry_processor_;
     CommandDispatcher& command_dispatcher_;
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound_queue_;
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue_;
+    ThreadSafeQueue<MessageEnvelope>& inbound_queue_;
+    ThreadSafeQueue<MessageEnvelope>& telemetry_queue_;
     std::atomic<bool> running_ {true};
 };
-
-}  // namespace datahaandtering

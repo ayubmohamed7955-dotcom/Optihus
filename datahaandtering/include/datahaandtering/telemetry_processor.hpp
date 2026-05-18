@@ -7,13 +7,14 @@
 #include "shared/message.hpp"
 #include "shared/thread_safe_queue.hpp"
 
-namespace datahaandtering {
+class WebUiServer;
 
 class TelemetryProcessor {
 public:
     TelemetryProcessor(
         DatabaseManager& db_manager,
-        shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue
+        ThreadSafeQueue<MessageEnvelope>& telemetry_queue,
+        WebUiServer& web_ui_server
     );
     ~TelemetryProcessor();
 
@@ -22,12 +23,11 @@ public:
 
 private:
     void worker_loop();
-    void process_telemetry_message(const shared::MessageEnvelope& message);
+    void process_telemetry_message(const MessageEnvelope& message);
 
     DatabaseManager& db_manager_;
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue_;
+    ThreadSafeQueue<MessageEnvelope>& telemetry_queue_;
+    WebUiServer& web_ui_server_;
     std::atomic<bool> running_ {false};
     std::thread worker_thread_;
 };
-
-}  // namespace datahaandtering

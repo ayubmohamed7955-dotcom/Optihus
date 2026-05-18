@@ -7,8 +7,6 @@
 
 #include "shared/time_utils.hpp"
 
-namespace shared {
-
 std::string message_type_to_string(MessageType type) {
     switch (type) {
         case MessageType::Hello:
@@ -64,7 +62,7 @@ nlohmann::json to_json_obj(const HelloPayload& payload) {
 }
 
 nlohmann::json to_json_obj(const TelemetryPayload& payload) {
-    return nlohmann::json {
+    nlohmann::json j {
         {"temperature_c", payload.temperature_c},
         {"humidity_air", payload.humidity_air},
         {"humidity_soil", payload.humidity_soil},
@@ -72,6 +70,10 @@ nlohmann::json to_json_obj(const TelemetryPayload& payload) {
         {"motor_status", payload.motor_status},
         {"error_status", payload.error_status}
     };
+    if (!payload.field_live.empty()) {
+        j["field_live"] = payload.field_live;
+    }
+    return j;
 }
 
 nlohmann::json to_json_obj(const CommandPayload& payload) {
@@ -117,6 +119,9 @@ std::optional<TelemetryPayload> telemetry_from_json(const nlohmann::json& j) {
     payload.pump_status = j.value("pump_status", "off");
     payload.motor_status = j.value("motor_status", "closed");
     payload.error_status = j.value("error_status", "none");
+    if (j.contains("field_live") && j["field_live"].is_object()) {
+        payload.field_live = j["field_live"];
+    }
     return payload;
 }
 
@@ -180,5 +185,3 @@ std::optional<MessageEnvelope> decode_json_line(std::string_view line) {
         return std::nullopt;
     }
 }
-
-}  // namespace shared

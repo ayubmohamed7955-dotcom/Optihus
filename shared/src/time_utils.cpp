@@ -6,8 +6,6 @@
 #include <iomanip>
 #include <sstream>
 
-namespace shared {
-
 std::string now_utc_iso8601() {
     const auto now = std::chrono::system_clock::now();
     const std::time_t time_now = std::chrono::system_clock::to_time_t(now);
@@ -46,5 +44,3 @@ bool is_iso8601_utc(std::string_view value) {
 
     return true;
 }
-
-}  // namespace shared

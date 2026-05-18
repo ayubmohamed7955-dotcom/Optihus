@@ -8,8 +8,6 @@
 
 #include "shared/types.hpp"
 
-namespace datahaandtering {
-
 class DatabaseManager {
 public:
     explicit DatabaseManager(std::string db_path);
@@ -24,7 +22,7 @@ public:
     bool initialize_schema(const std::string& init_sql_path);
     bool insert_telemetry(
         const std::string& timestamp_utc,
-        const shared::TelemetrySample& sample,
+        const TelemetrySample& sample,
         const std::string& source
     );
     bool insert_system_event(
@@ -40,15 +38,15 @@ public:
         const std::string& source,
         const std::string& status
     );
-    bool upsert_profile(const shared::Profile& profile, const std::string& timestamp_utc);
+    bool upsert_profile(const Profile& profile, const std::string& timestamp_utc);
     bool delete_profile(const std::string& profile_name);
-    std::vector<shared::Profile> list_profiles();
-    bool upsert_plant_box(const shared::PlantBoxConfig& plant_box, const std::string& timestamp_utc);
+    std::vector<Profile> list_profiles();
+    bool upsert_plant_box(const PlantBoxConfig& plant_box, const std::string& timestamp_utc);
     bool delete_plant_box(int id);
-    std::vector<shared::PlantBoxConfig> list_plant_boxes();
+    std::vector<PlantBoxConfig> list_plant_boxes();
 
-    bool load_active_config(shared::ActiveConfig& out_config);
-    bool save_active_config(const shared::ActiveConfig& config, const std::string& timestamp_utc);
+    bool load_active_config(ActiveConfig& out_config);
+    bool save_active_config(const ActiveConfig& config, const std::string& timestamp_utc);
     /// ISO-8601 timestamp for row id=1, or empty if missing.
     std::string read_active_config_timestamp_utc() const;
 
@@ -62,5 +60,3 @@ private:
     sqlite3* db_ {nullptr};
     mutable std::mutex db_mutex_;
 };
-
-}  // namespace datahaandtering

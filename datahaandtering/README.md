@@ -21,6 +21,9 @@ Denne mappe er server-delen af Optihus.
 - `src/tcp_server.cpp` - TCP server, accept/read/write loops
 - `src/database_manager.cpp` - database adgang
 - `src/app.cpp` - overordnet runtime flow
+- `src/web_ui_server.cpp` - HTTP UI og API (`/api/status`, profiler, plantekasser, kontrol)
+- `src/telemetry_processor.cpp` - telemetri-kø → SQLite + felt **`field_live`** → Web-status
+- `src/command_dispatcher.cpp` - bygger og køer kommandoer til Pi 2
 - `CMakeLists.txt` - build-definition for target `datahaandtering`
 
 ## Typisk kørsel (Pi)
@@ -43,6 +46,10 @@ Hvis Web ui ikke er tilgængelig, kan TUI startes direkte:
 ```
 
 TUI er fallback/admin og erstatter ikke Web ui som primær brugerflade.
+
+## Observabilitet (`GET /api/status`)
+
+Pi 2 kan sende **`field_live`** i telemetri. **`telemetry_processor`** skriver målinger til SQLite og kalder **`WebUiServer::note_field_live`**, så **`GET /api/status`** indeholder **`field_node`** (seneste komponent-/TCP‑snapshot). Under Web‑UI → **Fejlsøgning: teknisk JSON** vises det sammen med øvrig status.
 
 ## Plantekasser / `plant_boxes` (v1)
 

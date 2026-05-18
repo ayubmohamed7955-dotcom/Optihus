@@ -1,8 +1,10 @@
 #include "control_manager.hpp"
 
+#include "set_config_store.hpp"
+
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-#include "hw/motor.hpp"
-#include "hw/plant_box.hpp"
+#include "hw/Ventilation system/Motor.hpp"
+#include "hw/Watering system/PlantBox.hpp"
 #endif
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
@@ -12,11 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace miljoestyring {
-
-namespace {
-
-bool plant_box_entry_is_active(const nlohmann::json& box) {
+static bool plant_box_entry_is_active(const nlohmann::json& box) {
     if (!box.is_object() || !box.contains("is_active")) {
         return false;
     }
@@ -47,7 +45,7 @@ struct PlantWateringDecision {
     std::string active_label;
 };
 
-PlantWateringDecision evaluate_plant_watering(const nlohmann::json& params) {
+static PlantWateringDecision evaluate_plant_watering(const nlohmann::json& params) {
     PlantWateringDecision d;
     if (!params.contains("plant_boxes") || !params["plant_boxes"].is_array()) {
         d.mode = PlantWateringMode::MissingPlantBoxes;
@@ -103,79 +101,73 @@ PlantWateringDecision evaluate_plant_watering(const nlohmann::json& params) {
     return d;
 }
 
-void log_plant_watering_decision(const PlantWateringDecision& decision) {
+static void log_plant_watering_decision(const PlantWateringDecision& decision) {
     switch (decision.mode) {
         case PlantWateringMode::MissingPlantBoxes:
-            shared::log_warn(
+            log_warn(
                 "control_manager",
                 "Plant watering disabled (fail-safe): params.plant_boxes missing or not an array. "
                 "Not using profile bounds for soil/pump."
             );
             break;
         case PlantWateringMode::NoActiveProfile:
-            shared::log_info(
+            log_info(
                 "control_manager",
                 "Plant watering disabled (fail-safe): zero active plant_boxes profiles. "
                 "Not using profile bounds for soil/pump."
             );
             break;
         case PlantWateringMode::MultipleActiveProfiles:
-            shared::log_warn(
+            log_warn(
                 "control_manager",
                 "Plant watering disabled (fail-safe): more than one active plant_boxes profile. "
                 "Not using profile bounds for soil/pump."
             );
             break;
         case PlantWateringMode::SingleActiveProfile:
-            shared::log_info(
+            log_info(
                 "control_manager",
-                "Applied single active plant_boxes profile for soil/pump: id=" + std::to_string(decision.active_id) +
+                "Applied single active plant_boxes profile: id=" + std::to_string(decision.active_id) +
                     " label=\"" + decision.active_label + "\" min_soil_pct=" + std::to_string(decision.min_soil_pct) +
-                    " max_soil_pct=" + std::to_string(decision.max_soil_pct) +
-                    " pump_duration_sec=" + std::to_string(decision.pump_duration_sec) +
-                    " hysteresis_sec=" + std::to_string(decision.hysteresis_sec) +
-                    ". (Motor air limits still follow aggregated profile bounds when present.)"
+                    " (applied to watering threshold). Fields max_soil_pct=" + std::to_string(decision.max_soil_pct) +
+                    ", pump_duration_sec=" + std::to_string(decision.pump_duration_sec) +
+                    ", hysteresis_sec=" + std::to_string(decision.hysteresis_sec) +
+                    " are not consumed by PlantBox (partner zip semantics). Ventilation air limits still follow aggregated profile bounds."
             );
             break;
     }
 }
 
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-void apply_plant_water_decision(miljoestyring::hw::PlantBox* plant, const PlantWateringDecision& decision) {
-    if (plant == nullptr) {
+/** Field hardware (partner zip): kun `min_soil_pct` påvirker pumpelogik via setMinimumThreshold. */
+static void apply_plant_water_decision(PlantBox* plant_box_hw, const PlantWateringDecision& decision) {
+    if (plant_box_hw == nullptr) {
         return;
     }
     if (decision.mode == PlantWateringMode::SingleActiveProfile) {
-        plant->setMinimumThreshold(decision.min_soil_pct);
-        plant->setSkipWaterAtOrAbovePct(decision.max_soil_pct);
-        plant->setPumpDurationSec(decision.pump_duration_sec);
-        plant->setHysteresisSec(decision.hysteresis_sec);
+        plant_box_hw->setMinimumThreshold(decision.min_soil_pct);
     } else {
-        // Internal fail-safe only (no watering): not an official control mode. Official rules are
-        // "0 active plant_boxes => no watering" and ">1 active => no watering" (see README).
-        plant->setMinimumThreshold(100);
-        plant->setSkipWaterAtOrAbovePct(100);
-        plant->setPumpDurationSec(1);
-        plant->setHysteresisSec(600);
+        plant_box_hw->setMinimumThreshold(100);
     }
 }
 #endif
 
-}  // namespace
+
+namespace miljoestyring {
 
 void ControlManager::apply_inbound_message(
-    const shared::MessageEnvelope& message,
+    const MessageEnvelope& message,
     ClientRuntimeState& runtime,
-    miljoestyring::hw::Motor* motor,
-    miljoestyring::hw::PlantBox* plant
+    Motor* motor,
+    PlantBox* plant_box
 ) {
-    if (message.type != shared::MessageType::Command) {
+    if (message.type != MessageType::Command) {
         return;
     }
 
-    const auto cmd = shared::command_from_json(message.data);
+    const auto cmd = command_from_json(message.data);
     if (!cmd.has_value()) {
-        shared::log_warn("control_manager", "Ignored command: could not parse payload");
+        log_warn("control_manager", "Ignored command: could not parse payload");
         return;
     }
 
@@ -187,6 +179,8 @@ void ControlManager::apply_inbound_message(
                 runtime.telemetry_interval_sec.store(sec);
             }
         }
+
+        runtime.server_config_received.store(true);
 
         const bool em = p.value("emergency_stop", false);
         runtime.emergency_halt.store(em);
@@ -217,30 +211,22 @@ void ControlManager::apply_inbound_message(
                 motor->setHumidityLimits(40.0F, 75.0F);
             }
         }
-        apply_plant_water_decision(plant, plant_water);
+        apply_plant_water_decision(plant_box, plant_water);
 #endif
 
-        if (em) {
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-            if (motor != nullptr) {
-                motor->stop();
-            }
-            if (plant != nullptr) {
-                plant->stop();
-            }
-#endif
-        } else {
-#if OPTIHUS_MILJOESTYRING_HARDWARE
-            if (motor != nullptr) {
-                motor->start();
-            }
-            if (plant != nullptr) {
-                plant->start();
-            }
-#endif
+        const bool allow_motion = !em;
+        if (motor != nullptr) {
+            motor->setActuationEnabled(allow_motion);
         }
+        if (plant_box != nullptr) {
+            plant_box->setActuationEnabled(allow_motion);
+        }
+#endif
 
-        shared::log_info("control_manager", "Applied set_config from server");
+        (void)persist_field_config_after_set_config(p, runtime.emergency_halt.load());
+
+        log_info("control_manager", "Applied set_config from server");
         return;
     }
 
@@ -248,31 +234,32 @@ void ControlManager::apply_inbound_message(
         runtime.emergency_halt.store(true);
 #if OPTIHUS_MILJOESTYRING_HARDWARE
         if (motor != nullptr) {
-            motor->stop();
+            motor->setActuationEnabled(false);
         }
-        if (plant != nullptr) {
-            plant->stop();
+        if (plant_box != nullptr) {
+            plant_box->setActuationEnabled(false);
         }
 #endif
-        shared::log_warn("control_manager", "Emergency stop from server");
+        (void)persist_field_config_emergency_overlay(true);
+        log_warn("control_manager", "Emergency stop from server");
         return;
     }
 
     if (cmd->action == "clear_emergency_stop") {
         runtime.emergency_halt.store(false);
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-        if (motor != nullptr) {
-            motor->start();
-        }
-        if (plant != nullptr) {
-            plant->start();
+        if (runtime.server_config_received.load() && motor != nullptr && plant_box != nullptr) {
+            motor->setActuationEnabled(true);
+            plant_box->setActuationEnabled(true);
         }
 #endif
-        shared::log_info("control_manager", "Cleared emergency stop");
+        (void)persist_field_config_emergency_overlay(false);
+        log_info("control_manager", "Cleared emergency stop");
         return;
     }
 
-    shared::log(shared::LogLevel::Info, "control_manager", "Unhandled command: " + cmd->action);
+    log(LogLevel::Info, "control_manager", "Unhandled command: " + cmd->action);
 }
 
-}  // namespace miljoestyring
+}
+

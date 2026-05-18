@@ -14,8 +14,6 @@
 #include <winsock2.h>
 #endif
 
-namespace miljoestyring {
-
 class TcpClient {
 public:
     TcpClient(std::string host, int port);
@@ -26,10 +24,10 @@ public:
     bool is_connected() const;
     bool is_reader_running() const;
 
-    void start_reader(shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound);
+    void start_reader(ThreadSafeQueue<MessageEnvelope>& inbound);
     void stop_reader();
 
-    bool send_telemetry(const shared::TelemetrySample& sample);
+    bool send_telemetry(const TelemetrySample& sample);
 
 private:
     void read_loop();
@@ -47,8 +45,6 @@ private:
 
     std::thread reader_thread_;
     std::atomic<bool> reader_run_ {false};
-    shared::ThreadSafeQueue<shared::MessageEnvelope>* inbound_queue_ {nullptr};
+    ThreadSafeQueue<MessageEnvelope>* inbound_queue_ {nullptr};
     std::string read_buffer_;
 };
-
-}  // namespace miljoestyring

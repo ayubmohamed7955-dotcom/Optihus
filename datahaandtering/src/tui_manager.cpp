@@ -11,10 +11,7 @@
 #include "shared/time_utils.hpp"
 #include "shared/types.hpp"
 
-namespace datahaandtering {
-
-namespace {
-std::vector<std::string> split_csv(const std::string& value) {
+static std::vector<std::string> split_csv(const std::string& value) {
     std::vector<std::string> out;
     std::string item;
     for (char c : value) {
@@ -44,7 +41,7 @@ std::vector<std::string> split_csv(const std::string& value) {
     return out;
 }
 
-std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& items) {
+static std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& items) {
     std::vector<std::string> out;
     std::set<std::string> seen;
     for (const auto& item : items) {
@@ -55,7 +52,7 @@ std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& i
     return out;
 }
 
-std::string join_csv(const std::vector<std::string>& items) {
+static std::string join_csv(const std::vector<std::string>& items) {
     std::string out;
     for (std::size_t i = 0; i < items.size(); ++i) {
         out += items[i];
@@ -65,13 +62,12 @@ std::string join_csv(const std::vector<std::string>& items) {
     }
     return out;
 }
-}  // namespace
 
 TuiManager::TuiManager(DatabaseManager& db_manager, ConfigManager& config_manager)
     : db_manager_(db_manager), config_manager_(config_manager) {}
 
 int TuiManager::run() {
-    shared::log_info("tui", "Starter TUI");
+    log_info("tui", "Starter TUI");
     config_manager_.load_active_config();
 
     while (true) {
@@ -119,7 +115,7 @@ void TuiManager::show_active_config() const {
     const auto cfg = config_manager_.current_config();
     const auto selected = dedupe_preserve_order(split_csv(cfg.profile_name));
     std::cout << "Valgte profiler: " << (selected.empty() ? "(ingen)" : join_csv(selected)) << "\n";
-    std::cout << "Tilstand: " << shared::to_string(cfg.mode) << "\n";
+    std::cout << "Tilstand: " << to_string(cfg.mode) << "\n";
     std::cout << "Interval (sekunder): " << cfg.interval_sec << "\n";
     std::cout << "Nødstop: " << (cfg.emergency_stop ? "TIL" : "FRA") << "\n";
 }
@@ -168,7 +164,7 @@ void TuiManager::select_profile() {
 }
 
 void TuiManager::create_profile() {
-    shared::Profile profile;
+    Profile profile;
     profile.is_default = false;
 
     std::cout << "Afgrøde-type (unikt profilnavn): ";
@@ -190,7 +186,7 @@ void TuiManager::create_profile() {
     std::cin >> profile.interval_sec;
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
-    if (db_manager_.upsert_profile(profile, shared::now_utc_iso8601())) {
+    if (db_manager_.upsert_profile(profile, now_utc_iso8601())) {
         std::cout << "Profil gemt.\n";
     } else {
         std::cout << "Kunne ikke gemme profil.\n";
@@ -228,7 +224,7 @@ void TuiManager::set_mode() {
     std::cout << "Indtast tilstand (auto/manual): ";
     std::string mode;
     std::getline(std::cin, mode);
-    const auto parsed = shared::mode_from_string(mode);
+    const auto parsed = mode_from_string(mode);
     if (!parsed.has_value()) {
         std::cout << "Ugyldig tilstand.\n";
         return;
@@ -251,4 +247,3 @@ void TuiManager::toggle_emergency_stop() {
     }
 }
 
-}  // namespace datahaandtering

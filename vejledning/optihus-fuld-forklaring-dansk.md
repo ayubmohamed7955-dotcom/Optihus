@@ -46,7 +46,7 @@ Forestil dig systemet som tre lag:
 2. **Central computer (Pi 1):** Programmet **datahaandtering** holder net-forbindelsen til Pi 2, gemmer målinger og indstillinger i **SQLite**, og kan sende **kommandoer** til Pi 2 (fx ny konfiguration eller nødstop).
 3. **Feltcomputer (Pi 2):** Programmet **miljoestyring** sidder fysisk tæt på drivhuset. **Det** måler og **tænder eller slukker** for pumpe og vinduesmotor ud fra grænser, det har fået fra Pi 1.
 
-**Kritisk:** Den direkte styring af pumpe og motor sker på **Pi 2**. Pi 1 er den centrale **logbog og kontrolpult** for mennesker og for at samle historik. Hvis netværket mellem Pi 1 og Pi 2 falder, kan Pi 2 **ikke** få opdaterede grænser, før forbindelsen er tilbage (den kan stadig køre videre med sidste kendte tal og lokale loops).
+**Kritisk:** Den direkte styring af pumpe og motor sker på **Pi 2**. Pi 1 er den centrale **logbog og kontrolpult** for mennesker og for at samle historik. Hvis netværket mellem Pi 1 og Pi 2 falder, kan Pi 2 **ikke** få **ny** konfiguration fra serveren, før forbindelsen er tilbage — men **persistens på disk** kan stadig genindlæse sidste **`set_config`** ved **genstart** af feltprogrammet; under nedtid kan lokale sensor‑loops stadig køre med sidste anvendte grænser efter replay.
 
 ### Figur: hvem taler med hvem (tekstdiagram)
 
@@ -131,16 +131,18 @@ Formålet med **telemetry_processor** og **køer** er, at langsomme database-skr
 ```text
 miljoestyring_config.json (server adresse og port)
             |
+            +--> Ved boot: genindlæs evt. gemt set_config fra disk (/var/lib/optihus eller OPTIHUS_STATE_DIR)
+            |
             v
 tcp_client  <--TCP-->  Pi 1 (samme JSON-linjer som beskrevet)
             |
-            +--> beskeder lander i kø  -->  control_manager (fortolker set_config, nødstop, ...)
+            +--> beskeder lander i kø  -->  control_manager (fortolker set_config, nødstop, …)
             |
-            +--> sensor_manager læser sensorværdier til én telemetri-pakke
+            +--> sensor_manager læser sensorværdier til én telemetri-pakke (+ valgfrit felt_live til Web-status)
             |
-            +--> motor + DHT22 egen baggrundstråd (vindue ud fra luft og temperatur)
+            +--> motor + DHT22 egen baggrundstråd (vindue kun når aktuation er slået til efter konfiguration)
             |
-            +--> plant_box egen baggrundstråd (jordfugt og pumpe)
+            +--> plant_box egen baggrundstråd (vanding kun når aktuation er slået til)
 
 Hovedløkken i app skifter mellem: behandl kommandoer, send telemetri, vent lidt.
 ```
@@ -204,18 +206,19 @@ Programmet hedder **`miljoestyring`**.
 | Fil | Rolle i plain dansk |
 |-----|---------------------|
 | **`main.cpp`** | Indgang: starter felt-programmet. |
-| **`app.cpp`** | Læser `miljoestyring_config.json` (server-adresse og port). Opretter hardware **kun på Linux med hardware-option**: motor og plantekasse med bestemte GPIO-numre. Starter TCP-mod Pi 1. **Hovedløkke:** (1) Læs kommandoer fra køen og giv dem til `ControlManager`. (2) Læs sensorer og send telemetri. (3) Vent det antal sekunder, serveren har sat (mindst 1 sekund ad gangen i venteløkken, så forbindelsen kan opdages hurtigt hvis den ryger). |
-| **`tcp_client.cpp`** | Opretter forbindelse til Pi 1, holder en læsetråd kørende, sender hallo og telemetri som JSON-linjer. Ved tab af forbindelse: prøv igen efter nogle sekunder. På Linux kan der køres et Wi-Fi-recovery-kald efter flere fejl (hjælper med at finde netværket igen). |
-| **`sensor_manager.cpp`** | Samler **ét målepunktsæt** til telemetri: med hardware hentes temperatur og luftfugt fra motor-delens sensor, jordfugt og pumpeland fra plantekassen; uden hardware bruges faste testtal. |
-| **`control_manager.cpp`** | Fortolker **kommandoer** fra Pi 1. Ved `set_config`: sætter telemetri-interval, nødstop-flag, motor-grænser for luft og temperatur, og **plantekasse-reglerne** for vanding (kun ud fra `plant_boxes`, ikke ud fra profilernes jord-grænser i `bounds`). Ved nødstop: stop motor og plantekasse-tråde (på hardware). |
+| **`app.cpp`** | Læser `miljoestyring_config.json`. Opretter hardware **kun på Linux med GPIO-option**: **`Motor`** og **`PlantBox`** med pins fra **`board_pins.hpp`**. Starter sensor-tråde ved boot. **Genindlæser** sidste **`set_config`** fra disk hvis persistensfil findes (**før** TCP). Opretter TCP-mod Pi 1. **Hovedløkke:** drain kommandoer, send telemetri (kan indeholde **`field_live`** til Pi 1 Web-status), vent interval. |
+| **`tcp_client.cpp`** | Forbindelse til Pi 1, læsetråd, hallo og telemetri som JSON-linjer; reconnect og evt. Wi-Fi recovery på Linux. |
+| **`sensor_manager.cpp`** | Samler ét målepunktsæt til telemetri og fylder **`field_live_json`** til komponentoversigt i browseren. |
+| **`control_manager.cpp`** | Fortolker **`Command`**. Ved **`set_config`**: interval, grænser, plant_boxes, **`server_config_received`**, **`setActuationEnabled`** på motor/plant_box (kun reel styring efter konfiguration). Gemmer persistens på disk. Ved nødstop: slår aktuation fra og opdaterer overlay i persistensfil hvis den findes. **`clear_emergency_stop`**: genaktiverer aktuation kun hvis konfiguration allerede er modtaget (som i koden). |
+| **`set_config_store.cpp`** | Atomisk lagring af sidste **`set_config`** + nødstop-overlay; genindlæsning ved boot. |
 
-Under **`include/`** og **`src/hw/`**:
+Under **`include/`** og **`src/hw/`** (mapper **Ventilation system** og **Watering system**):
 
 | Komponent | Fil(er) | Hvad det er |
 |-----------|---------|-------------|
 | **DHT22-lignende sensor** | `DHT22.cpp`, `DHT22.hpp` | Læser lufttemperatur og luftfugtighed via Linux IIO (filer under `/sys`). Bruges **inde i motor-modulet**. |
-| **Motor / vindue** | `motor.cpp`, `motor.hpp` | En steppermotor driver vinduet op eller ned over GPIO. En baggrundstråd læser DHT22 cirka hvert 2. sekund, opdaterer **grænser** fra serveren (temperatur og luftfugtighed), og beslutter om vinduet skal være åbent eller lukket ud fra om målinger er **over** maks eller **under** minimum. |
-| **Plantekasse / pumpe / jord** | `plant_box.cpp`, `plant_box.hpp` | Læser jordfugt via **I2C** på adresse **0x48**. Styrer pumpe-pin med systemkommandoen `pinctrl`. En baggrundstråd måler gentagne gange, glatter, og kan starte pumpe i et antal sekunder med pause (**hysterese**) imellem, styret af tal fra serverens plantekasseprofil. |
+| **Motor / vindue** | `Motor.cpp`, `Motor.hpp` | Steppermotor over **`libgpiod`**. Baggrundstråd læser DHT22 cirka hvert 2. sekund; **åbner/lukker kun vinduet** når **`setActuationEnabled(true)`** efter **`set_config`** (eller replay fra disk). |
+| **Plantekasse / pumpe / jord** | `PlantBox.cpp`, `PlantBox.hpp` | Jordfugt via **I2C** **`0x48`**. Pumpe med **`pinctrl`**. Vandingsgren i loop respekterer **`setActuationEnabled`** (kun måling før konfiguration). |
 
 **Vigtigt:** På Windows eller uden compile-flag for hardware kører **ingen** af GPIO-, I2C- eller pumpe-delene; du får kun netværks- og logik-test.
 
@@ -283,18 +286,20 @@ Disse fire tal kommer fra **plantekasseprofilen** på serveren, **kun** når **p
 
 **Formål:** Regulere klima ved at åbne eller lukke et vindue med en **steppermotor**.
 
-**Sensor til motor-del:** `Motor`-klassen opretter en **DHT22** på GPIO-pin **24** (konstant i koden). Den giver **temperatur** og **luftfugtighed** til motor-tråden cirka hvert 2. sekund.
+**Sensor til motor-del:** `Motor`-klassen bruger **`DHT22`**; GPIO-nummer til overlay og dokumentation samles i **`board_pins.hpp`** (**`DHT22_GPIO_PIN`**, typisk **24** i repo — skal matche jeres wiring og evt. **`config.txt`** på Pi).
 
 **Grænser fra serveren:** Når Pi 1 sender `set_config`, kan der følge:
 
 - **`temp_bounds_c`**: minimum og maksimum temperatur i Celsius for vinduet (teksten bruger ord, ikke grad-symbol).
 - **`bounds`**: minimum og maksimum **luftfugtighed** til motor-delen (profiler kan slås sammen til ét fælles interval).
 
-**Logik i grove træk:** Hvis luftfugtigheden er **under** sit minimum **eller** temperaturen er **under** sit minimum, ønskes vinduet lukket (flag sættes til "skal ikke åbne ud fra dette"). Hvis luftfugtigheden er **over** sit maksimum **eller** temperaturen er **over** sit maksimum, ønskes vinduet åbent. Motor-tråden åbner eller lukker med et fast antal skridt pr. omgang.
+**Logik i grove træk:** Hvis luftfugtigheden er **under** sit minimum **eller** temperaturen er **under** sit minimum, ønskes vinduet lukket (flag sættes til "skal ikke åbne ud fra dette"). Hvis luftfugtigheden er **over** sit maksimum **eller** temperaturen er **over** sit maksimum, ønskes vinduet åbent. Motor-tråden åbner eller lukker **kun** med stepper når **aktuation** er aktiv efter konfiguration.
 
-**Nødstop:** Ved kommando om nødstop stopper motor-tråden og plantekasse-tråden (pumpe slukkes). Fortsæt-drift starter dem igen.
+**Nødstop:** Kommandoen slår **aktuation fra** (ingen nye vinduesbevægelser / pumpesyklus påbegyndes); sensor-tråde kan stadig køre til telemetri. **Fortsæt drift** (`clear_emergency_stop`) genaktiverer kun aktuation hvis feltnoden allerede har modtaget **`set_config`** (eller replay fra disk).
 
 **Kritisk:** Motor-tråden og plantekasse-tråden kører **uafhængigt**. De deler ikke én samlet "prioritet"; ændringer i konfiguration mens begge kører kan give små forsinkelser før alt er synkroniseret.
+
+**Persistens:** Sidste **`set_config`** (og seneste nødstop-tilstand som overlay) kan gemmes under **`/var/lib/optihus`** — se **`miljoestyring/README.md`**. Det gør at Pi 2 kan genoprette grænser efter genstart **uden** at vente på serveren.
 
 ---
 
@@ -303,7 +308,7 @@ Disse fire tal kommer fra **plantekasseprofilen** på serveren, **kun** når **p
 ### Fra Pi 2 til Pi 1
 
 - **Hello** lige efter forbindelse: "jeg er her, klar til at modtage konfiguration".
-- **Telemetri** jævnligt: temperatur, luftfugt, jordfugt, pumpe-status, vindues-status, fejlflag.
+- **Telemetri** jævnligt: temperatur, luftfugt, jordfugt, pumpe-status, vindues-status, fejlflag — og valgfrit **`field_live`** (teknik: hvilke loops og TCP der er "live"; bruges i Web-ui under fejlsøgning).
 
 ### Fra Pi 1 til Pi 2
 
@@ -327,6 +332,10 @@ Kun to felter er vigtige i standard-setup:
 
 Findes filen ikke, bruger programmet standardværdier og logger en advarsel.
 
+### Persistens på Pi 2 (reboot)
+
+Som supplement kan sidste **`set_config`** gemmes på disk (**`/var/lib/optihus/miljoestyring_field_config.json`** eller mappe fra **`OPTIHUS_STATE_DIR`**). Ved opstart genindlæses konfigurationen før TCP-forbindelse åbnes. Detaljer og Windows-sti: **`miljoestyring/README.md`**.
+
 ### På Pi 1: databasen
 
 - **`active_config`**: hvilke profiler der er valgt (kommasepareret og som liste i beskeder), interval, nødstop, tilstand.
@@ -344,7 +353,7 @@ Websiden er **primær** brugerflade:
 - Vælg og gem **profiler**.
 - Redigér **plantekasser** og deres tal.
 - Tryk **Gem konfiguration** for at skrive til databasen og sætte **set_config** i kø.
-- **Drift**: status (forbundet eller ej), nødstop og gensend konfiguration.
+- **Drift**: status (forbundet eller ej), **`field_node`** / teknisk JSON (live Pi 2 komponenter via **`field_live`**), nødstop og gensend konfiguration.
 
 Undersiden forklarer i tekst forskellen mellem **kladde** og **gemt aktiv konfiguration**.
 
@@ -388,7 +397,7 @@ Kort over hovedtabeller:
 
 ## 14. Fejl, fail-safe og hvad du skal være opmærksom på
 
-1. **Netværk:** Uden TCP kan Pi 2 ikke få ny konfiguration; den kører videre med sidste kendte tal indtil forbindelse kommer tilbage (men nødstop kan stadig have sat hardware i stop).
+1. **Netværk:** Uden TCP kan Pi 2 ikke få ny konfiguration live; **persistens på disk** kan dog genindlæse sidste **`set_config`** ved boot. Sensor-tråde kan stadig køre og sende telemetri med sidste kendte runtime-indstillinger efter replay.
 2. **Én aktiv plantekasse:** Systemet er designet til **højst én** aktiv plantekasseprofil. Flere aktive giver **ingen vanding** på klienten og blokeres også ved gem på serveren.
 3. **Ingen aktiv plantekasse:** Ingen vanding ud fra planteskema (fail-safe).
 4. **Windows-build:** God til at teste net og beskedformat; **ikke** til reel pumpe eller motor.
@@ -415,7 +424,7 @@ Alt her kan kompilere ind i **både** Pi 1 og Pi 2.
 
 ## 16. Telemetri på serveren (`telemetry_processor`)
 
-Når `app.cpp` modtager en telemetri-besked, lægges den i en **separat kø**. En baggrundstråd i **`telemetry_processor.cpp`** tager beskeder ud ét ad gangen, læser tallene ud af JSON, og kalder **`database_manager.insert_telemetry`**.
+Når `app.cpp` modtager en telemetri-besked, lægges den i en **separat kø**. En baggrundstråd i **`telemetry_processor.cpp`** tager beskeder ud ét ad gangen, læser tallene ud af JSON, kalder **`database_manager.insert_telemetry`**, og hvis **`field_live`** findes i payloadet, opdateres **`WebUiServer`** så **`GET /api/status`** viser **`field_node`** (sidste snapshot fra Pi 2).
 
 Formålet er at database-skrivning ikke må blokere den hurtige TCP-tråd, og at fejl ved korrupt JSON kun påvirker den enkelte måling.
 
@@ -435,9 +444,11 @@ Der er ikke længere kildefiler i repoet, som bevidst ligger uden for `CMakeList
   Tjekliste til netværksadfærd.
 - **`vejledning/architecture.md`**  
   Kortere teknisk arkitektur på engelsk.
+- **`docs/rapport/RAPPORT.md`** og **`docs/rapport/diagrams/optihus-system.puml`**  
+  Rapporttekst og PlantUML‑diagrammer (eksportér PNG/SVG som beskrevet i **`docs/rapport/README.md`**).
 - **`datahaandtering/README.md`** og **`miljoestyring/README.md`**  
   Udviklernes hurtige reference.
 
 ---
 
-*Sidst ajourført som del af dokumentationspakken: indeholder strukturkapitel med diagrammer, plantekasse-v1, TCP-flow og hardware som i kildekoden på det tidspunkt dokumentet blev skrevet. Ved store ændringer i koden bør dette dokument opdateres i samme omgang.*
+*Sidst ajourført: dokumentation og diagrammer stemmer med Motor/PlantBox/DHT22, `board_pins`, persistens (`set_config_store`), telemetri `field_live` / Web `field_node`, og hardware-mapperne **Ventilation system** / **Watering system**.*

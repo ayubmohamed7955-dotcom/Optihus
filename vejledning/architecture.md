@@ -32,8 +32,14 @@ Reconnect contract:
 
 - If client reconnects, it sends `hello` again.
 - Server re-sends current active config.
+- Pi 2 may **replay persisted `set_config`** from disk at startup (`set_config_store`, default `/var/lib/optihus/` or `OPTIHUS_STATE_DIR`) so limits/actuation apply before TCP connects.
 - System must tolerate either startup order (Pi 1 first or Pi 2 first).
 - System must not depend on captive-portal/browser auto-launch behavior.
+
+## Field observability
+
+- Telemetry may include **`field_live`** (TCP + hardware loop/actuation snapshot).
+- **`TelemetryProcessor`** forwards this to **`WebUiServer`**; **`GET /api/status`** exposes **`field_node`** for browser troubleshooting JSON.
 
 ## Data and timestamp conventions
 

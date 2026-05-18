@@ -4,6 +4,7 @@ add_executable(miljoestyring
     src/tcp_client.cpp
     src/sensor_manager.cpp
     src/control_manager.cpp
+    src/set_config_store.cpp
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -14,9 +15,9 @@ endif()
 
 if(OPTIHUS_MILJOESTYRING_HARDWARE)
     target_sources(miljoestyring PRIVATE
-        src/hw/DHT22.cpp
-        src/hw/motor.cpp
-        src/hw/plant_box.cpp
+        "src/hw/Ventilation system/DHT22.cpp"
+        "src/hw/Ventilation system/Motor.cpp"
+        "src/hw/Watering system/PlantBox.cpp"
     )
     target_compile_definitions(miljoestyring PRIVATE OPTIHUS_MILJOESTYRING_HARDWARE=1)
     target_link_libraries(miljoestyring PRIVATE gpiodcxx gpiod)

@@ -7,14 +7,12 @@
 #include "shared/message.hpp"
 #include "shared/thread_safe_queue.hpp"
 
-namespace datahaandtering {
-
 class CommandDispatcher {
 public:
     CommandDispatcher(
         ConfigManager& config_manager,
         DatabaseManager& db_manager,
-        shared::ThreadSafeQueue<shared::MessageEnvelope>& outbound_queue
+        ThreadSafeQueue<MessageEnvelope>& outbound_queue
     );
 
     bool dispatch_current_config();
@@ -22,11 +20,9 @@ public:
     bool dispatch_manual_action(const std::string& action, const std::string& value);
 
 private:
-    bool enqueue_command(const shared::CommandPayload& command_payload, const std::string& status);
+    bool enqueue_command(const CommandPayload& command_payload, const std::string& status);
 
     ConfigManager& config_manager_;
     DatabaseManager& db_manager_;
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& outbound_queue_;
+    ThreadSafeQueue<MessageEnvelope>& outbound_queue_;
 };
-
-}  // namespace datahaandtering

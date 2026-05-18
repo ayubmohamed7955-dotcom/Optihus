@@ -8,13 +8,12 @@ Type=simple
 User=pi
 Group=pi
 #
-# --- Typisk layout: samme clone som ~/Optihus ---
-# Binary fra tree: build/miljoestyring/miljoestyring
-# miljoestyring_config.json SKAL ligge i WorkingDirectory ved start.
+# Typisk samme clone som ~/Optihus — binary fx build/miljoestyring/miljoestyring.
+# Klient-server og port står i kildekoden shared/constants.hpp (kDefaultDataServerHost, kTcpPort).
 ExecStart=/home/pi/Optihus/build/miljoestyring/miljoestyring
 WorkingDirectory=/home/pi/Optihus
 #
-# Alternativ: dedikeret mappe med kun binary + JSON
+# Alternativ: dedikeret mappe med kun binary:
 # ExecStart=/opt/optihus/miljoestyring/miljoestyring
 # WorkingDirectory=/opt/optihus/miljoestyring
 Restart=on-failure

@@ -26,7 +26,7 @@ Resultat: **Pass / Fail**
 
 - [ ] Klient er på AP-netværk
 - [ ] Klient har `192.168.4.x` adresse
-- [ ] `server_host` sat til `192.168.4.1`
+- [ ] Klient peger mod Pi 1 som AP‑gateway (**`192.168.4.1`**, felterne **`kDefaultDataServerHost`** / **`kTcpPort`**)
 - [ ] TCP exchange gennemført
 - [ ] Web ui tilgængelig på `http://192.168.4.1:8080`
 - [ ] Hvis UI ikke åbner automatisk: manuel åbning af `http://192.168.4.1:8080` virker
@@ -42,6 +42,14 @@ Resultat: **Pass / Fail**
 - [ ] Start server/AP igen
 - [ ] Bekræft klient reconnecter automatisk
 - [ ] Bekræft server logger ny forbindelse fra klient-IP
+
+Resultat: **Pass / Fail**
+
+## Test E — Persistens og felt-overlay (valgfri)
+
+- [ ] Efter **`set_config`** findes **`miljoestyring_field_config.json`** (standard **`/var/lib/optihus/`** eller **`OPTIHUS_STATE_DIR`**) og kan læses af felt-brugeren
+- [ ] Genstart af **`miljoestyring`** anvender replay (**log**: genindsat persistert feltkonfiguration) før TCP er oppe
+- [ ] I Web-ui → **Fejlsøgning: teknisk JSON** viser **`field_node`** med **`components`** når Pi 2 sender telemetri med **`field_live`**
 
 Resultat: **Pass / Fail**
 

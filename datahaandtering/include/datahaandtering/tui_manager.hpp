@@ -3,8 +3,6 @@
 #include "datahaandtering/config_manager.hpp"
 #include "datahaandtering/database_manager.hpp"
 
-namespace datahaandtering {
-
 class TuiManager {
 public:
     TuiManager(DatabaseManager& db_manager, ConfigManager& config_manager);
@@ -23,5 +21,3 @@ private:
     DatabaseManager& db_manager_;
     ConfigManager& config_manager_;
 };
-
-}  // namespace datahaandtering

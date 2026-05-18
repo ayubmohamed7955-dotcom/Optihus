@@ -5,9 +5,15 @@ build-windows/
 # Andre lokale build-mapper, fx build-windows-data, build-windows-tcp (undgår staged artefakter)
 build-windows-*/
 cmake-build-*/
+build-mingw/
+build-ninja/
+build-smoke-stub/
 
 # Midlertidige review-/sammenligningskopier — ikke til versionering
 _tmp_miljostyring_review/
+# Lokal unzip af partner-zip — ikke i repo
+_zip_review_miljostyring/
+*.zip
 
 # CMake/Ninja generated files
 CMakeCache.txt

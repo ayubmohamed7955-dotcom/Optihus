@@ -23,7 +23,9 @@ Denne mappe samler projektets dokumentation.
 9. `boot-og-netvaerk-da.md`
    - Autostart på Raspberry Pi (systemd `.service`) og AP / Wi-Fi klient i OS
 10. `skabeloner-pi1-pi2-da.md`
-   - systemd skabeloner, Pi 2 kopierer `miljoestyring_config.json.example` fra repo-rod til `miljoestyring_config.json`
+    - systemd skabeloner, Pi 2 kopierer `miljoestyring_config.json.example` fra repo-rod til `miljoestyring_config.json`
+
+**Rapport og eksporterbare diagrammer:** [`docs/rapport/RAPPORT.md`](../docs/rapport/RAPPORT.md), [`docs/rapport/diagrams/optihus-system.puml`](../docs/rapport/diagrams/optihus-system.puml) (se [`docs/rapport/README.md`](../docs/rapport/README.md)).
 
 ## Mål med dokumentationen
 

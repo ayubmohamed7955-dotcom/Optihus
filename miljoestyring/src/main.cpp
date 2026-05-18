@@ -1,6 +1,6 @@
 #include "app.hpp"
 
 int main() {
-    miljoestyring::App app;
+    App app;
     return app.run();
 }

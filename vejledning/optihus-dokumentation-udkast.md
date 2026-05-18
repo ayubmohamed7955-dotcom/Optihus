@@ -72,17 +72,9 @@ cmake --build build-windows-tcp -j4
 
 ## 5) Konfigurationsregel for AP-mode
 
-På klienten skal `miljoestyring_config.json` pege på serverens AP IP:
+På klienten matcher **`kDefaultDataServerHost`** og **`kTcpPort`** (`shared/include/shared/constants.hpp`) som standard Pi 1 i AP‑tilstand (**fx `192.168.4.1:5000`**). Ved anden addressing: ret konstanterne og genbyg.
 
-```json
-{
-  "server_host": "192.168.4.1",
-  "server_port": 5000
-}
-```
-
-Hvis `127.0.0.1` bruges, bliver testen kun lokal loopback og ikke cross-device.
-
+Hvis `127.0.0.1` bruges ved test på én maskine, bliver forsøget kun lokal loopback og ikke kryds‑enhed.
 ## 6) Boot-reliability princip
 
 Brugeroplevelsen skal være startup-order tolerant:
@@ -220,7 +212,7 @@ Klient:
 ### Typiske fejl og hurtig handling
 
 - `Could not connect to server`:
-  - tjek `miljoestyring_config.json`
+  - ret evt. **`kDefaultDataServerHost`** / **`kTcpPort`** og genbyg
   - tjek at serveren kører
   - tjek AP-tilslutning
 - `Dropped invalid JSON line` på server:

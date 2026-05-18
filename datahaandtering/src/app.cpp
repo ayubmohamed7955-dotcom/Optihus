@@ -6,15 +6,13 @@
 #include <sstream>
 #include <utility>
 
-namespace datahaandtering {
-
 App::App(
     TcpServer& tcp_server,
     WebUiServer& web_ui_server,
     TelemetryProcessor& telemetry_processor,
     CommandDispatcher& command_dispatcher,
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound_queue,
-    shared::ThreadSafeQueue<shared::MessageEnvelope>& telemetry_queue
+    ThreadSafeQueue<MessageEnvelope>& inbound_queue,
+    ThreadSafeQueue<MessageEnvelope>& telemetry_queue
 )
     : tcp_server_(tcp_server),
       web_ui_server_(web_ui_server),
@@ -25,11 +23,11 @@ App::App(
 
 int App::run() {
     if (!tcp_server_.start()) {
-        shared::log_error("datahaandtering", "Failed to start TCP server");
+        log_error("datahaandtering", "Failed to start TCP server");
         return 1;
     }
     if (!web_ui_server_.start()) {
-        shared::log_error("datahaandtering", "Failed to start Web ui server");
+        log_error("datahaandtering", "Failed to start Web ui server");
         tcp_server_.stop();
         return 1;
     }
@@ -38,13 +36,13 @@ int App::run() {
     {
         std::ostringstream oss;
         oss << "Backend running. Web ui on port "
-            << shared::constants::kHttpUiPort
+            << kHttpUiPort
             << " (open http://<this-pi-ip>:"
-            << shared::constants::kHttpUiPort
+            << kHttpUiPort
             << " in a browser; AP example http://192.168.4.1:"
-            << shared::constants::kHttpUiPort
+            << kHttpUiPort
             << "). TUI optional via --tui";
-        shared::log_info("datahaandtering", oss.str());
+        log_info("datahaandtering", oss.str());
     }
 
     while (running_) {
@@ -70,23 +68,22 @@ void App::request_stop() {
     telemetry_queue_.shutdown();
 }
 
-void App::handle_message(const shared::MessageEnvelope& message) {
+void App::handle_message(const MessageEnvelope& message) {
     switch (message.type) {
-        case shared::MessageType::Hello:
-            shared::log_info("app", "Received hello. Sending active config.");
+        case MessageType::Hello:
+            log_info("app", "Received hello. Sending active config.");
             web_ui_server_.note_client_hello(message.ts_utc);
             command_dispatcher_.dispatch_current_config();
             break;
-        case shared::MessageType::Telemetry:
+        case MessageType::Telemetry:
             telemetry_queue_.push(message);
             break;
-        case shared::MessageType::Ack:
-            shared::log_info("app", "Received ack from client");
+        case MessageType::Ack:
+            log_info("app", "Received ack from client");
             break;
         default:
-            shared::log_warn("app", "Unhandled message type");
+            log_warn("app", "Unhandled message type");
             break;
     }
 }
 
-}  // namespace datahaandtering

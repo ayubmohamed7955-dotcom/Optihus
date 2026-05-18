@@ -15,9 +15,9 @@ Denne mappe indeholder fælles kode, som bruges af både server og klient.
 
 ## Vigtige filer
 
-- `include/shared/message.hpp` - beskedmodeller (hvordan Hello, Telemetry, Command og Ack ser ud)
+- `include/shared/message.hpp` - beskedmodeller og payloads (Hello, Telemetry med valgfrit **`field_live`**, Command, Ack)
 - `include/shared/constants.hpp` - fælles konstanter (port **5000** og **8080**, database-sti, genforbindelsesforsinkelse)
-- `include/shared/types.hpp` - datafelter for profiler, plantekasser og telemetri-prøver
+- `include/shared/types.hpp` - datafelter for profiler, plantekasser og telemetri-prøver (inkl. valgfri **`field_live_json`** på Pi 2)
 - `include/shared/thread_safe_queue.hpp` - sikker kø mellem tråde på server og klient
 - `src/message_codec.cpp` - JSON-linje encode/decode til TCP-ledningen
 - `src/logger.cpp` - log output

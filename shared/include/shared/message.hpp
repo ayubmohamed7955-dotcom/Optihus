@@ -6,8 +6,6 @@
 #include <string_view>
 #include <utility>
 
-namespace shared {
-
 enum class MessageType {
     Hello,
     Heartbeat,
@@ -39,6 +37,8 @@ struct TelemetryPayload {
     std::string pump_status {"off"};
     std::string motor_status {"closed"};
     std::string error_status {"none"};
+    /** Valgfrit objekt fra felt-node (Pi 2): TCP, hardware-tråde, aktuation osv. */
+    nlohmann::json field_live = nlohmann::json::object();
 };
 
 struct CommandPayload {
@@ -80,5 +80,3 @@ inline MessageEnvelope make_message(
     msg.ts_utc = std::move(ts_utc);
     return msg;
 }
-
-}  // namespace shared

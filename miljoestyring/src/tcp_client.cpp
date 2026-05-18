@@ -16,17 +16,16 @@
 
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
+#include "shared/message.hpp"
 #include "shared/message_codec.hpp"
 #include "shared/time_utils.hpp"
 
-namespace miljoestyring {
-
 #if defined(_WIN32)
-std::string last_socket_error() {
+static std::string last_socket_error() {
     return std::to_string(WSAGetLastError());
 }
 #else
-std::string last_socket_error() {
+static std::string last_socket_error() {
     return std::strerror(errno);
 }
 #endif
@@ -64,7 +63,7 @@ bool TcpClient::connect() {
         return true;
     }
     if (host_.empty() || port_ <= 0) {
-        shared::log_error("tcp_client", "Invalid server host/port");
+        log_error("tcp_client", "Invalid server host/port");
         return false;
     }
 
@@ -72,7 +71,7 @@ bool TcpClient::connect() {
     if (!winsock_started_) {
         WSADATA wsa_data {};
         if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-            shared::log_error("tcp_client", "WSAStartup failed");
+            log_error("tcp_client", "WSAStartup failed");
             return false;
         }
         winsock_started_ = true;
@@ -81,7 +80,7 @@ bool TcpClient::connect() {
 
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (!is_connected()) {
-        shared::log_error("tcp_client", "socket() failed: " + last_socket_error());
+        log_error("tcp_client", "socket() failed: " + last_socket_error());
         return false;
     }
 
@@ -89,36 +88,36 @@ bool TcpClient::connect() {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(static_cast<uint16_t>(port_));
     if (inet_pton(AF_INET, host_.c_str(), &server_addr.sin_addr) != 1) {
-        shared::log_error("tcp_client", "Invalid IPv4 address: " + host_);
+        log_error("tcp_client", "Invalid IPv4 address: " + host_);
         disconnect();
         return false;
     }
 
     if (::connect(socket_fd_, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) != 0) {
-        shared::log_error("tcp_client", "connect() failed: " + last_socket_error());
+        log_error("tcp_client", "connect() failed: " + last_socket_error());
         disconnect();
         return false;
     }
 
-    shared::HelloPayload hello_payload;
-    hello_payload.node = std::string(shared::constants::kMiljoeHostname);
+    HelloPayload hello_payload;
+    hello_payload.node = std::string(kMiljoeHostname);
     hello_payload.version = "0.1.0";
 
-    const auto hello_message = shared::make_message(
-        shared::MessageType::Hello,
-        std::string(shared::constants::kSourceMiljoestyring),
-        shared::to_json_obj(hello_payload),
+    const auto hello_message = make_message(
+        MessageType::Hello,
+        std::string(kSourceMiljoestyring),
+        to_json_obj(hello_payload),
         "",
-        shared::now_utc_iso8601()
+        now_utc_iso8601()
     );
 
-    if (!send_all(shared::encode_json_line(hello_message))) {
-        shared::log_error("tcp_client", "Failed to send hello message");
+    if (!send_all(encode_json_line(hello_message))) {
+        log_error("tcp_client", "Failed to send hello message");
         disconnect();
         return false;
     }
 
-    shared::log_info("tcp_client", "Connected and sent hello to " + host_ + ":" + std::to_string(port_));
+    log_info("tcp_client", "Connected and sent hello to " + host_ + ":" + std::to_string(port_));
     return true;
 }
 
@@ -135,7 +134,7 @@ void TcpClient::disconnect() {
         close(socket_fd_);
         socket_fd_ = -1;
 #endif
-        shared::log_info("tcp_client", "Disconnected");
+        log_info("tcp_client", "Disconnected");
     }
 }
 
@@ -151,7 +150,7 @@ bool TcpClient::is_reader_running() const {
     return reader_run_.load();
 }
 
-void TcpClient::start_reader(shared::ThreadSafeQueue<shared::MessageEnvelope>& inbound) {
+void TcpClient::start_reader(ThreadSafeQueue<MessageEnvelope>& inbound) {
     stop_reader();
     inbound_queue_ = &inbound;
     read_buffer_.clear();
@@ -169,9 +168,9 @@ void TcpClient::read_loop() {
 #endif
         if (n <= 0) {
             if (n == 0) {
-                shared::log_info("tcp_client", "Server closed connection (recv=0)");
+                log_info("tcp_client", "Server closed connection (recv=0)");
             } else if (reader_run_.load()) {
-                shared::log_warn("tcp_client", "recv failed: " + last_socket_error());
+                log_warn("tcp_client", "recv failed: " + last_socket_error());
             }
             reader_run_.store(false);
             break;
@@ -185,9 +184,9 @@ void TcpClient::read_loop() {
             if (line.empty()) {
                 continue;
             }
-            const auto parsed = shared::decode_json_line(line);
+            const auto parsed = decode_json_line(line);
             if (!parsed.has_value()) {
-                shared::log_warn("tcp_client", "Dropped invalid JSON line from server");
+                log_warn("tcp_client", "Dropped invalid JSON line from server");
                 continue;
             }
             if (inbound_queue_ != nullptr) {
@@ -197,25 +196,34 @@ void TcpClient::read_loop() {
     }
 }
 
-bool TcpClient::send_telemetry(const shared::TelemetrySample& sample) {
-    shared::TelemetryPayload telemetry;
+bool TcpClient::send_telemetry(const TelemetrySample& sample) {
+    TelemetryPayload telemetry;
     telemetry.temperature_c = sample.temperature_c;
     telemetry.humidity_air = sample.humidity_air;
     telemetry.humidity_soil = sample.humidity_soil;
     telemetry.pump_status = sample.pump_status;
     telemetry.motor_status = sample.motor_status;
     telemetry.error_status = sample.error_status;
+    if (!sample.field_live_json.empty()) {
+        try {
+            const auto parsed = nlohmann::json::parse(sample.field_live_json);
+            if (parsed.is_object() && !parsed.empty()) {
+                telemetry.field_live = parsed;
+            }
+        } catch (...) {
+        }
+    }
 
-    const auto telemetry_message = shared::make_message(
-        shared::MessageType::Telemetry,
-        std::string(shared::constants::kSourceMiljoestyring),
-        shared::to_json_obj(telemetry),
+    const auto telemetry_message = make_message(
+        MessageType::Telemetry,
+        std::string(kSourceMiljoestyring),
+        to_json_obj(telemetry),
         "",
         sample.timestamp_utc
     );
 
-    if (!send_all(shared::encode_json_line(telemetry_message))) {
-        shared::log_error("tcp_client", "Failed to send telemetry");
+    if (!send_all(encode_json_line(telemetry_message))) {
+        log_error("tcp_client", "Failed to send telemetry");
         disconnect();
         return false;
     }
@@ -224,7 +232,7 @@ bool TcpClient::send_telemetry(const shared::TelemetrySample& sample) {
 
 bool TcpClient::send_all(std::string_view payload) {
     if (!is_connected()) {
-        shared::log_error("tcp_client", "send_all called on disconnected socket");
+        log_error("tcp_client", "send_all called on disconnected socket");
         return false;
     }
 
@@ -237,7 +245,7 @@ bool TcpClient::send_all(std::string_view payload) {
         const ssize_t sent = send(socket_fd_, data, remaining, 0);
 #endif
         if (sent <= 0) {
-            shared::log_error("tcp_client", "send() failed: " + last_socket_error());
+            log_error("tcp_client", "send() failed: " + last_socket_error());
             return false;
         }
         data += sent;
@@ -246,4 +254,3 @@ bool TcpClient::send_all(std::string_view payload) {
     return true;
 }
 
-}  // namespace miljoestyring

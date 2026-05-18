@@ -30,20 +30,17 @@
 #include "shared/types.hpp"
 #include "shared/time_utils.hpp"
 
-namespace datahaandtering {
-namespace {
-
 #if defined(_WIN32)
-std::string last_socket_error() {
+static std::string last_socket_error() {
     return std::to_string(WSAGetLastError());
 }
 #else
-std::string last_socket_error() {
+static std::string last_socket_error() {
     return std::strerror(errno);
 }
 #endif
 
-void close_socket(int socket_fd) {
+static void close_socket(int socket_fd) {
 #if defined(_WIN32)
     closesocket(socket_fd);
 #else
@@ -51,7 +48,7 @@ void close_socket(int socket_fd) {
 #endif
 }
 
-std::unordered_map<std::string, std::string> parse_query(std::string_view request_line) {
+static std::unordered_map<std::string, std::string> parse_query(std::string_view request_line) {
     const auto hex_value = [](unsigned char c) -> int {
         if (c >= '0' && c <= '9') {
             return c - '0';
@@ -112,7 +109,7 @@ std::unordered_map<std::string, std::string> parse_query(std::string_view reques
     return out;
 }
 
-std::string json_escape(const std::string& s) {
+static std::string json_escape(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 8);
     for (char c : s) {
@@ -140,7 +137,7 @@ std::string json_escape(const std::string& s) {
     return out;
 }
 
-std::vector<std::string> split_csv(const std::string& value) {
+static std::vector<std::string> split_csv(const std::string& value) {
     std::vector<std::string> out;
     std::size_t start = 0;
     while (start <= value.size()) {
@@ -163,7 +160,7 @@ std::vector<std::string> split_csv(const std::string& value) {
     return out;
 }
 
-std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& items) {
+static std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& items) {
     std::vector<std::string> out;
     std::set<std::string> seen;
     for (const auto& item : items) {
@@ -174,7 +171,7 @@ std::vector<std::string> dedupe_preserve_order(const std::vector<std::string>& i
     return out;
 }
 
-std::string join_csv(const std::vector<std::string>& items) {
+static std::string join_csv(const std::vector<std::string>& items) {
     std::ostringstream oss;
     for (std::size_t i = 0; i < items.size(); ++i) {
         oss << items[i];
@@ -185,7 +182,7 @@ std::string join_csv(const std::vector<std::string>& items) {
     return oss.str();
 }
 
-bool profile_csv_sets_equal(const std::string& a, const std::string& b) {
+static bool profile_csv_sets_equal(const std::string& a, const std::string& b) {
     auto va = dedupe_preserve_order(split_csv(a));
     auto vb = dedupe_preserve_order(split_csv(b));
     std::sort(va.begin(), va.end());
@@ -193,7 +190,7 @@ bool profile_csv_sets_equal(const std::string& a, const std::string& b) {
     return va == vb;
 }
 
-std::set<std::string> profile_name_set(const std::vector<shared::Profile>& profiles) {
+static std::set<std::string> profile_name_set(const std::vector<Profile>& profiles) {
     std::set<std::string> names;
     for (const auto& p : profiles) {
         names.insert(p.name);
@@ -208,7 +205,7 @@ struct AggregatedBounds {
     double max_soil {0.0};
 };
 
-void migrate_profile_name_in_active_config(
+static void migrate_profile_name_in_active_config(
     ConfigManager& config_manager,
     const std::string& old_name,
     const std::string& new_name
@@ -233,8 +230,8 @@ void migrate_profile_name_in_active_config(
     config_manager.save_active_config();
 }
 
-bool aggregate_bounds_if_compatible(
-    const std::vector<shared::Profile>& selected_profiles,
+static bool aggregate_bounds_if_compatible(
+    const std::vector<Profile>& selected_profiles,
     AggregatedBounds& out_bounds
 ) {
     if (selected_profiles.empty()) {
@@ -254,8 +251,6 @@ bool aggregate_bounds_if_compatible(
     }
     return out_bounds.min_air <= out_bounds.max_air && out_bounds.min_soil <= out_bounds.max_soil;
 }
-
-}  // namespace
 
 WebUiServer::WebUiServer(
     int port,
@@ -282,7 +277,7 @@ bool WebUiServer::start() {
 #if defined(_WIN32)
     WSADATA wsa_data {};
     if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-        shared::log_error("web_ui", "WSAStartup failed");
+        log_error("web_ui", "WSAStartup failed");
         running_ = false;
         return false;
     }
@@ -290,7 +285,7 @@ bool WebUiServer::start() {
 
     listen_socket_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket_ < 0) {
-        shared::log_error("web_ui", "Failed to create socket: " + last_socket_error());
+        log_error("web_ui", "Failed to create socket: " + last_socket_error());
 #if defined(_WIN32)
         WSACleanup();
 #endif
@@ -317,7 +312,7 @@ bool WebUiServer::start() {
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(listen_socket_, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) < 0) {
-        shared::log_error("web_ui", "bind failed: " + last_socket_error());
+        log_error("web_ui", "bind failed: " + last_socket_error());
         close_socket(listen_socket_);
         listen_socket_ = -1;
 #if defined(_WIN32)
@@ -328,7 +323,7 @@ bool WebUiServer::start() {
     }
 
     if (listen(listen_socket_, 8) < 0) {
-        shared::log_error("web_ui", "listen failed: " + last_socket_error());
+        log_error("web_ui", "listen failed: " + last_socket_error());
         close_socket(listen_socket_);
         listen_socket_ = -1;
 #if defined(_WIN32)
@@ -339,7 +334,7 @@ bool WebUiServer::start() {
     }
 
     accept_thread_ = std::thread(&WebUiServer::accept_loop, this);
-    shared::log_info("web_ui", "Browser UI listening on port " + std::to_string(port_));
+    log_info("web_ui", "Browser UI listening on port " + std::to_string(port_));
     return true;
 }
 
@@ -365,13 +360,19 @@ void WebUiServer::stop() {
 #if defined(_WIN32)
     WSACleanup();
 #endif
-    shared::log_info("web_ui", "Browser UI stopped");
+    log_info("web_ui", "Browser UI stopped");
 }
 
 void WebUiServer::note_client_hello(const std::string& timestamp_utc) {
     hello_count_.fetch_add(1);
     std::lock_guard<std::mutex> lock(status_mutex_);
     last_hello_ts_ = timestamp_utc;
+}
+
+void WebUiServer::note_field_live(std::string components_json, std::string telemetry_ts_utc) {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    last_field_live_components_json_ = std::move(components_json);
+    last_field_live_ts_ = std::move(telemetry_ts_utc);
 }
 
 void WebUiServer::accept_loop() {
@@ -382,7 +383,7 @@ void WebUiServer::accept_loop() {
             accept(listen_socket_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
         if (client_socket < 0) {
             if (running_) {
-                shared::log_warn("web_ui", "accept failed: " + last_socket_error());
+                log_warn("web_ui", "accept failed: " + last_socket_error());
             }
             continue;
         }
@@ -511,7 +512,7 @@ bool WebUiServer::handle_config_request(
                     return true;
                 }
             }
-            std::vector<shared::Profile> selected_profiles;
+            std::vector<Profile> selected_profiles;
             selected_profiles.reserve(selected.size());
             for (const auto& name : selected) {
                 for (const auto& p : available_profiles) {
@@ -577,7 +578,7 @@ bool WebUiServer::handle_profiles_request(
     }
     if (request_line.rfind("POST /api/profiles/upsert", 0) == 0) {
         const auto query = parse_query(request_line);
-        shared::Profile p;
+        Profile p;
         if (const auto it = query.find("name"); it != query.end()) {
             p.name = it->second;
         }
@@ -624,7 +625,7 @@ bool WebUiServer::handle_profiles_request(
         }
 
         const auto all_profiles = db_manager_.list_profiles();
-        const auto find_profile = [&](const std::string& n) -> const shared::Profile* {
+        const auto find_profile = [&](const std::string& n) -> const Profile* {
             for (const auto& x : all_profiles) {
                 if (x.name == n) {
                     return &x;
@@ -651,7 +652,7 @@ bool WebUiServer::handle_profiles_request(
                     body = "{\"ok\":false}\n";
                     return true;
                 }
-                const bool up = db_manager_.upsert_profile(p, shared::now_utc_iso8601());
+                const bool up = db_manager_.upsert_profile(p, now_utc_iso8601());
                 if (!up) {
                     body = "{\"ok\":false,\"error\":\"upsert failed after delete\"}\n";
                     return true;
@@ -668,7 +669,7 @@ bool WebUiServer::handle_profiles_request(
             }
         }
 
-        const bool ok = db_manager_.upsert_profile(p, shared::now_utc_iso8601());
+        const bool ok = db_manager_.upsert_profile(p, now_utc_iso8601());
         body = std::string("{\"ok\":") + (ok ? "true" : "false") + "}\n";
         return true;
     }
@@ -725,7 +726,7 @@ bool WebUiServer::handle_plant_boxes_request(
     }
     if (request_line.rfind("POST /api/plant-boxes/upsert", 0) == 0) {
         const auto query = parse_query(request_line);
-        shared::PlantBoxConfig plant_box;
+        PlantBoxConfig plant_box;
         if (const auto it = query.find("id"); it != query.end() && !it->second.empty()) {
             try {
                 plant_box.id = std::stoi(it->second);
@@ -813,7 +814,7 @@ bool WebUiServer::handle_plant_boxes_request(
         }
 
         if (plant_box.id > 0) {
-            std::optional<shared::PlantBoxConfig> existing;
+            std::optional<PlantBoxConfig> existing;
             for (const auto& b : db_manager_.list_plant_boxes()) {
                 if (b.id == plant_box.id) {
                     existing = b;
@@ -861,7 +862,7 @@ bool WebUiServer::handle_plant_boxes_request(
             return true;
         }
 
-        const bool ok = db_manager_.upsert_plant_box(plant_box, shared::now_utc_iso8601());
+        const bool ok = db_manager_.upsert_plant_box(plant_box, now_utc_iso8601());
         const bool queued = ok ? command_dispatcher_.dispatch_current_config() : false;
         if (ok) {
             note_control_result("set_config", queued);
@@ -917,7 +918,7 @@ void WebUiServer::note_control_result(std::string action, bool queued) {
     std::lock_guard<std::mutex> lock(status_mutex_);
     last_control_action_ = std::move(action);
     last_control_queued_ = queued;
-    last_control_ts_ = shared::now_utc_iso8601();
+    last_control_ts_ = now_utc_iso8601();
     if (is_set_config) {
         last_set_config_profiles_csv_ = std::move(profile_snap);
         last_set_config_queued_ok_ = queued;
@@ -947,6 +948,8 @@ std::string WebUiServer::build_status_json() const {
     std::string last_set_csv;
     bool last_set_queued_ok;
     std::string last_set_ts;
+    std::string last_field_live_components_json;
+    std::string last_field_live_ts;
     {
         std::lock_guard<std::mutex> lock(status_mutex_);
         last_hello = last_hello_ts_;
@@ -956,6 +959,8 @@ std::string WebUiServer::build_status_json() const {
         last_set_csv = last_set_config_profiles_csv_;
         last_set_queued_ok = last_set_config_queued_ok_;
         last_set_ts = last_set_config_ts_;
+        last_field_live_components_json = last_field_live_components_json_;
+        last_field_live_ts = last_field_live_ts_;
     }
     const auto cfg = config_manager_.current_config();
     const bool profiles_match =
@@ -975,6 +980,21 @@ std::string WebUiServer::build_status_json() const {
     } else {
         delivery_hint = "Profilvalg matcher sidste set_config i kø (hardware kvitterer ikke herfra).";
     }
+
+    std::string field_node_body;
+    if (last_field_live_ts == "never") {
+        field_node_body =
+            "\"telemetry_ts\": \"never\",\n"
+            "    \"components\": null,\n"
+            "    \"hint\": \"" +
+            json_escape("Ingen Pi 2 telemetri med field_live endnu (eller ældre klient).") + "\"";
+    } else {
+        field_node_body =
+            "\"telemetry_ts\": \"" + json_escape(last_field_live_ts) + "\",\n"
+            "    \"components\": " +
+            last_field_live_components_json;
+    }
+
     return "{\n"
            "  \"service\": \"datahaandtering\",\n"
            "  \"ui\": \"running\",\n"
@@ -995,8 +1015,12 @@ std::string WebUiServer::build_status_json() const {
            "  },\n"
            "  \"config_queue_matches_active\": " + std::string(queue_matches_active ? "true" : "false") + ",\n"
            "  \"config_delivery_ok\": " + std::string(delivery_ok ? "true" : "false") + ",\n"
-           "  \"config_delivery_hint\": \"" + json_escape(delivery_hint) + "\"\n"
-           "}\n";
+           "  \"config_delivery_hint\": \"" + json_escape(delivery_hint) + "\",\n"
+           "  \"field_node\": {\n"
+           "    " +
+            field_node_body + "\n"
+                              "  }\n"
+                              "}\n";
 }
 
 std::string WebUiServer::build_config_json() const {
@@ -1016,7 +1040,7 @@ std::string WebUiServer::build_config_json() const {
     oss << "],\n"
         << "  \"interval_sec\": " << cfg.interval_sec << ",\n"
         << "  \"emergency_stop\": " << (cfg.emergency_stop ? "true" : "false") << ",\n"
-        << "  \"mode\": \"" << json_escape(shared::to_string(cfg.mode)) << "\",\n"
+        << "  \"mode\": \"" << json_escape(to_string(cfg.mode)) << "\",\n"
         << "  \"saved_at\": \"" << json_escape(saved_at) << "\"\n"
         << "}\n";
     return oss.str();
@@ -1235,7 +1259,7 @@ std::string WebUiServer::build_index_html() {
            "        </div>\n"
            "        <details class=\"debug-details\">\n"
            "          <summary>Fejlsøgning: teknisk JSON (skjult som udgangspunkt)</summary>\n"
-           "          <p class=\"hint\" style=\"margin-top:0;\">Primært til integrationstest og implementeringsfejlsøgning. To <strong>forskellige kilder</strong>. Status opdateres løbende fra serveren; styringssvar viser kun sidste POST.</p>\n"
+           "          <p class=\"hint\" style=\"margin-top:0;\">Primært til integrationstest og implementeringsfejlsøgning. To <strong>forskellige kilder</strong>. Status opdateres løbende fra serveren; styringssvar viser kun sidste POST. Under status‑JSON findes <code>field_node</code>: seneste live‑oversigt fra Pi&nbsp;2 (TCP‑link, sensor‑loops, om aktuation er tilladt); opdateres fra feltnodens telemetri‑felt <code>field_live</code>.</p>\n"
            "          <div class=\"status-tech debug-json-block\">\n"
            "            <div class=\"status-tech-label\">Status: rå JSON fra <code>GET /api/status</code></div>\n"
            "            <pre id=\"statusRaw\">Indlæser...</pre>\n"
@@ -1805,4 +1829,3 @@ std::string WebUiServer::build_index_html() {
            "</html>\n";
 }
 
-}  // namespace datahaandtering
