@@ -64,10 +64,3 @@ private:
     void runSteps(int steps);
     void runLoop();
 };
-    static const int SEQ[8][4];
-
-    void runSteps(int steps);
-    void runLoop();
-};
-
-#endif
