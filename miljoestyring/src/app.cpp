@@ -218,14 +218,7 @@ int App::run() {
         client.start_reader(inbound);
     };
 
-    reconnect();
-
-    while (true) {
-        if (!client.is_connected() || !client.is_reader_running()) {
-            log_warn("miljoestyring", "Connection lost. Reconnecting...");
-            reconnect();
-        }
-
+    auto process_inbound = [&]() {
         for (;;) {
             const auto msg = inbound.try_pop();
             if (!msg.has_value()) {
@@ -237,6 +230,17 @@ int App::run() {
             control_manager.apply_inbound_message(*msg, runtime, nullptr, nullptr);
 #endif
         }
+    };
+
+    reconnect();
+
+    while (true) {
+        if (!client.is_connected() || !client.is_reader_running()) {
+            log_warn("miljoestyring", "Connection lost. Reconnecting...");
+            reconnect();
+        }
+
+        process_inbound();
 
         TelemetrySample enriched = sensor_manager.read_sample(&runtime);
 #if OPTIHUS_MILJOESTYRING_HARDWARE
@@ -253,13 +257,16 @@ int App::run() {
 
         const int sleep_sec = runtime.telemetry_interval_sec.load();
         const int bounded_sleep = std::max(1, sleep_sec);
-        for (int waited = 0; waited < bounded_sleep; ++waited) {
+        constexpr int kInboundPollStepMs = 200;
+        const int total_wait_ms = bounded_sleep * 1000;
+        for (int waited_ms = 0; waited_ms < total_wait_ms; waited_ms += kInboundPollStepMs) {
+            process_inbound();
             if (!client.is_connected() || !client.is_reader_running()) {
                 log_warn("miljoestyring", "Connection lost during wait. Reconnecting...");
                 reconnect();
                 break;
             }
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(kInboundPollStepMs));
         }
     }
 }
