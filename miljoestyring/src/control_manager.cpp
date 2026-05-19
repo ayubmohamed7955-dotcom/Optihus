@@ -293,12 +293,17 @@ void ControlManager::apply_inbound_message(
             log_warn("control_manager", "Manual motor test ignored: motor hardware unavailable");
             return;
         }
+        constexpr int kManualMotorRepeats = 10;
         if (motor->isWindowOpen()) {
-            motor->close();
-            log_info("control_manager", "Manual motor test: closed window");
+            for (int i = 0; i < kManualMotorRepeats; ++i) {
+                motor->close();
+            }
+            log_info("control_manager", "Manual motor test: close x10");
         } else {
-            motor->open();
-            log_info("control_manager", "Manual motor test: opened window");
+            for (int i = 0; i < kManualMotorRepeats; ++i) {
+                motor->open();
+            }
+            log_info("control_manager", "Manual motor test: open x10");
         }
 #else
         (void)motor;
