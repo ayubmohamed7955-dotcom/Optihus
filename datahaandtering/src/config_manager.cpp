@@ -43,3 +43,13 @@ void ConfigManager::set_emergency_stop(bool emergency_stop) {
     active_config_.emergency_stop = emergency_stop;
 }
 
+void ConfigManager::set_ventilation_enabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(config_mutex_);
+    active_config_.ventilation_enabled = enabled;
+}
+
+void ConfigManager::set_watering_enabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(config_mutex_);
+    active_config_.watering_enabled = enabled;
+}
+

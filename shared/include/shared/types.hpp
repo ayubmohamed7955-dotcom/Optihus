@@ -18,6 +18,8 @@ struct Profile {
     double max_humidity_air {0.0};
     double min_humidity_soil {0.0};
     double max_humidity_soil {0.0};
+    double min_temp_c {18.0};
+    double max_temp_c {26.0};
     int interval_sec {60};
     bool is_default {false};
 };
@@ -27,7 +29,15 @@ struct ActiveConfig {
     std::string profile_name {"tomato"};
     int interval_sec {60};
     bool emergency_stop {false};
+    /** When false, Pi 2 disables ventilation motor actuation (sensors may still run). */
+    bool ventilation_enabled {true};
+    /** When false, Pi 2 disables pump actuation (sensors may still run). */
+    bool watering_enabled {true};
 };
+
+/// Sentinel: plant box field not configured by user (DB / JSON).
+inline constexpr double kPlantBoxUnsetMinSoilPct = -1.0;
+inline constexpr int kPlantBoxUnsetHysteresisSec = -1;
 
 /// Logical plantbox profile (persisted as `plant_boxes`; v1: soil/pump params for the active profile only on client).
 struct PlantBoxConfig {
@@ -35,11 +45,23 @@ struct PlantBoxConfig {
     std::string label;
     int slot {1};
     bool is_active {true};
-    double min_soil_pct {35.0};
+    double min_soil_pct {kPlantBoxUnsetMinSoilPct};
     double max_soil_pct {100.0};
     int pump_duration_sec {1};
-    int hysteresis_sec {600};
+    int hysteresis_sec {kPlantBoxUnsetHysteresisSec};
 };
+
+inline bool plant_box_min_soil_configured(const PlantBoxConfig& box) {
+    return box.min_soil_pct >= 0.0 && box.min_soil_pct <= 100.0;
+}
+
+inline bool plant_box_hysteresis_configured(const PlantBoxConfig& box) {
+    return box.hysteresis_sec >= 0;
+}
+
+inline bool plant_box_watering_params_configured(const PlantBoxConfig& box) {
+    return plant_box_min_soil_configured(box) && plant_box_hysteresis_configured(box);
+}
 
 struct TelemetrySample {
     std::string timestamp_utc;

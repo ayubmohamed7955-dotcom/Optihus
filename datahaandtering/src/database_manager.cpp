@@ -45,6 +45,40 @@ static bool telemetry_table_exists(sqlite3* db) {
     return exists;
 }
 
+static bool profiles_has_column(sqlite3* db, const char* column_name) {
+    const char* sql = "PRAGMA table_info(profiles);";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (col_text(stmt, 1) == column_name) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+static bool active_config_has_column(sqlite3* db, const char* column_name) {
+    const char* sql = "PRAGMA table_info(active_config);";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (col_text(stmt, 1) == column_name) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 static bool plant_boxes_has_column(sqlite3* db, const char* column_name) {
     const char* sql = "PRAGMA table_info(plant_boxes);";
     sqlite3_stmt* stmt = nullptr;
@@ -103,6 +137,79 @@ bool DatabaseManager::open() {
         sqlite3_close(db_);
         db_ = nullptr;
         return false;
+    }
+    const struct ProfileTempMigration {
+        const char* name;
+        const char* sql;
+    } profile_migrations[] = {
+        {"min_temp_c", "ALTER TABLE profiles ADD COLUMN min_temp_c REAL NOT NULL DEFAULT 18;"},
+        {"max_temp_c", "ALTER TABLE profiles ADD COLUMN max_temp_c REAL NOT NULL DEFAULT 26;"},
+    };
+    for (const auto& m : profile_migrations) {
+        if (profiles_has_column(db_, m.name)) {
+            continue;
+        }
+        char* err = nullptr;
+        if (sqlite3_exec(db_, m.sql, nullptr, nullptr, &err) != SQLITE_OK) {
+            const std::string msg = err == nullptr ? "unknown" : err;
+            if (err != nullptr) {
+                sqlite3_free(err);
+            }
+            log_error(
+                "database_manager",
+                std::string("profiles migration failed for ") + m.name + ": " + msg
+            );
+            sqlite3_close(db_);
+            db_ = nullptr;
+            return false;
+        }
+        log_info("database_manager", std::string("Applied profiles migration: ") + m.name);
+    }
+    const struct ActiveConfigMigration {
+        const char* name;
+        const char* sql;
+    } active_config_migrations[] = {
+        {"ventilation_enabled",
+         "ALTER TABLE active_config ADD COLUMN ventilation_enabled INTEGER NOT NULL DEFAULT 1 "
+         "CHECK (ventilation_enabled IN (0, 1));"},
+        {"watering_enabled",
+         "ALTER TABLE active_config ADD COLUMN watering_enabled INTEGER NOT NULL DEFAULT 1 "
+         "CHECK (watering_enabled IN (0, 1));"},
+    };
+    for (const auto& m : active_config_migrations) {
+        if (active_config_has_column(db_, m.name)) {
+            continue;
+        }
+        char* err = nullptr;
+        if (sqlite3_exec(db_, m.sql, nullptr, nullptr, &err) != SQLITE_OK) {
+            const std::string msg = err == nullptr ? "unknown" : err;
+            if (err != nullptr) {
+                sqlite3_free(err);
+            }
+            log_error(
+                "database_manager",
+                std::string("active_config migration failed for ") + m.name + ": " + msg
+            );
+            sqlite3_close(db_);
+            db_ = nullptr;
+            return false;
+        }
+        log_info("database_manager", std::string("Applied active_config migration: ") + m.name);
+    }
+    if (profiles_has_column(db_, "min_temp_c") && profiles_has_column(db_, "max_temp_c")) {
+        char* repair_err = nullptr;
+        const char* repair_sql =
+            "UPDATE profiles SET min_temp_c = 18.0, max_temp_c = 26.0 "
+            "WHERE (min_temp_c = 0.0 AND max_temp_c = 0.0) OR min_temp_c > max_temp_c;";
+        if (sqlite3_exec(db_, repair_sql, nullptr, nullptr, &repair_err) != SQLITE_OK) {
+            const std::string msg = repair_err == nullptr ? "unknown" : repair_err;
+            if (repair_err != nullptr) {
+                sqlite3_free(repair_err);
+            }
+            log_warn("database_manager", "profiles temperature repair skipped: " + msg);
+        } else {
+            log_info("database_manager", "Repaired invalid profile temperature bounds where needed");
+        }
     }
     log_info("database_manager", "Opened SQLite: " + db_path_);
     return true;
@@ -225,12 +332,13 @@ bool DatabaseManager::upsert_profile(const Profile& profile, const std::string& 
 
     const char* sql =
         "INSERT INTO profiles(name, crop_type, min_humidity_air, max_humidity_air, min_humidity_soil, "
-        "max_humidity_soil, interval_sec, is_default, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "max_humidity_soil, min_temp_c, max_temp_c, interval_sec, is_default, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(name) DO UPDATE SET "
         "crop_type=excluded.crop_type, min_humidity_air=excluded.min_humidity_air, "
         "max_humidity_air=excluded.max_humidity_air, min_humidity_soil=excluded.min_humidity_soil, "
-        "max_humidity_soil=excluded.max_humidity_soil, interval_sec=excluded.interval_sec, "
+        "max_humidity_soil=excluded.max_humidity_soil, min_temp_c=excluded.min_temp_c, "
+        "max_temp_c=excluded.max_temp_c, interval_sec=excluded.interval_sec, "
         "is_default=excluded.is_default, updated_at=excluded.updated_at;";
 
     sqlite3_stmt* stmt = nullptr;
@@ -244,10 +352,12 @@ bool DatabaseManager::upsert_profile(const Profile& profile, const std::string& 
     sqlite3_bind_double(stmt, 4, profile.max_humidity_air);
     sqlite3_bind_double(stmt, 5, profile.min_humidity_soil);
     sqlite3_bind_double(stmt, 6, profile.max_humidity_soil);
-    sqlite3_bind_int(stmt, 7, profile.interval_sec);
-    sqlite3_bind_int(stmt, 8, profile.is_default ? 1 : 0);
-    bind_text(stmt, 9, timestamp_utc);
-    bind_text(stmt, 10, timestamp_utc);
+    sqlite3_bind_double(stmt, 7, profile.min_temp_c);
+    sqlite3_bind_double(stmt, 8, profile.max_temp_c);
+    sqlite3_bind_int(stmt, 9, profile.interval_sec);
+    sqlite3_bind_int(stmt, 10, profile.is_default ? 1 : 0);
+    bind_text(stmt, 11, timestamp_utc);
+    bind_text(stmt, 12, timestamp_utc);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
@@ -280,7 +390,7 @@ std::vector<Profile> DatabaseManager::list_profiles() {
 
     const char* sql =
         "SELECT name, crop_type, min_humidity_air, max_humidity_air, min_humidity_soil, "
-        "max_humidity_soil, interval_sec, is_default FROM profiles ORDER BY name;";
+        "max_humidity_soil, min_temp_c, max_temp_c, interval_sec, is_default FROM profiles ORDER BY name;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return result;
@@ -293,8 +403,10 @@ std::vector<Profile> DatabaseManager::list_profiles() {
         p.max_humidity_air = sqlite3_column_double(stmt, 3);
         p.min_humidity_soil = sqlite3_column_double(stmt, 4);
         p.max_humidity_soil = sqlite3_column_double(stmt, 5);
-        p.interval_sec = sqlite3_column_int(stmt, 6);
-        p.is_default = sqlite3_column_int(stmt, 7) == 1;
+        p.min_temp_c = sqlite3_column_double(stmt, 6);
+        p.max_temp_c = sqlite3_column_double(stmt, 7);
+        p.interval_sec = sqlite3_column_int(stmt, 8);
+        p.is_default = sqlite3_column_int(stmt, 9) == 1;
         result.push_back(std::move(p));
     }
 
@@ -436,7 +548,10 @@ bool DatabaseManager::load_active_config(ActiveConfig& out_config) {
         return false;
     }
 
-    const char* sql = "SELECT mode, profile_name, interval_sec, emergency_stop FROM active_config WHERE id=1;";
+    const char* sql =
+        "SELECT mode, profile_name, interval_sec, emergency_stop, "
+        "COALESCE(ventilation_enabled, 1), COALESCE(watering_enabled, 1) "
+        "FROM active_config WHERE id=1;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -451,6 +566,8 @@ bool DatabaseManager::load_active_config(ActiveConfig& out_config) {
             out_config.profile_name = col_text(stmt, 1);
             out_config.interval_sec = sqlite3_column_int(stmt, 2);
             out_config.emergency_stop = sqlite3_column_int(stmt, 3) == 1;
+            out_config.ventilation_enabled = sqlite3_column_int(stmt, 4) == 1;
+            out_config.watering_enabled = sqlite3_column_int(stmt, 5) == 1;
             ok = true;
         }
     }
@@ -487,11 +604,14 @@ bool DatabaseManager::save_active_config(
     }
 
     const char* sql =
-        "INSERT INTO active_config(id, timestamp, mode, profile_name, interval_sec, emergency_stop) "
-        "VALUES(1, ?, ?, ?, ?, ?) "
+        "INSERT INTO active_config(id, timestamp, mode, profile_name, interval_sec, emergency_stop, "
+        "ventilation_enabled, watering_enabled) "
+        "VALUES(1, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET timestamp=excluded.timestamp, mode=excluded.mode, "
         "profile_name=excluded.profile_name, interval_sec=excluded.interval_sec, "
-        "emergency_stop=excluded.emergency_stop;";
+        "emergency_stop=excluded.emergency_stop, "
+        "ventilation_enabled=excluded.ventilation_enabled, "
+        "watering_enabled=excluded.watering_enabled;";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -503,6 +623,8 @@ bool DatabaseManager::save_active_config(
     bind_text(stmt, 3, config.profile_name);
     sqlite3_bind_int(stmt, 4, config.interval_sec);
     sqlite3_bind_int(stmt, 5, config.emergency_stop ? 1 : 0);
+    sqlite3_bind_int(stmt, 6, config.ventilation_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 7, config.watering_enabled ? 1 : 0);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
@@ -543,10 +665,10 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
         "label TEXT NOT NULL,"
         "slot INTEGER NOT NULL UNIQUE,"
         "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),"
-        "min_soil_pct REAL NOT NULL DEFAULT 35,"
+        "min_soil_pct REAL NOT NULL DEFAULT -1,"
         "max_soil_pct REAL NOT NULL DEFAULT 100,"
         "pump_duration_sec INTEGER NOT NULL DEFAULT 1,"
-        "hysteresis_sec INTEGER NOT NULL DEFAULT 600,"
+        "hysteresis_sec INTEGER NOT NULL DEFAULT -1,"
         "created_at TEXT NOT NULL,"
         "updated_at TEXT NOT NULL"
         ");"
@@ -653,11 +775,11 @@ bool DatabaseManager::ensure_plant_boxes_schema_locked() {
     }
     bind_text(seed_stmt, 1, "Plantekasse 1");
     sqlite3_bind_int(seed_stmt, 2, 1);
-    sqlite3_bind_int(seed_stmt, 3, 1);
-    sqlite3_bind_double(seed_stmt, 4, 35.0);
+    sqlite3_bind_int(seed_stmt, 3, 0);
+    sqlite3_bind_double(seed_stmt, 4, kPlantBoxUnsetMinSoilPct);
     sqlite3_bind_double(seed_stmt, 5, 100.0);
     sqlite3_bind_int(seed_stmt, 6, 1);
-    sqlite3_bind_int(seed_stmt, 7, 600);
+    sqlite3_bind_int(seed_stmt, 7, kPlantBoxUnsetHysteresisSec);
     bind_text(seed_stmt, 8, now);
     bind_text(seed_stmt, 9, now);
     const bool seeded = sqlite3_step(seed_stmt) == SQLITE_DONE;

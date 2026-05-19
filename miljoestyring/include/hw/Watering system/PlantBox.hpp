@@ -16,6 +16,7 @@ private:
     std::thread workerThread;
 
     int minimumThreshold;
+    int pauseBetweenWateringSec;
 
     int airValue;
     int waterValue;
@@ -38,6 +39,8 @@ public:
     void stop();
 
     void setMinimumThreshold(int value);
+    /** Pause mellem vandinger (sek.); sættes fra server `hysteresis_sec` når brugeren har konfigureret plantekasse. */
+    void setPauseBetweenWateringSec(int value);
     float getCurrentAverageMoisture();
     bool isPumpOn() const { return pumpOn_.load(); }
 

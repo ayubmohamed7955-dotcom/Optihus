@@ -53,12 +53,12 @@ Pi 2 kan sende **`field_live`** i telemetri. **`telemetry_processor`** skriver m
 
 ## Plantekasser / `plant_boxes` (v1)
 
-**Afgrøde-profiler** og **plantekasseprofiler** er to separate ting: afgrøde-profiler (tabellen `profiles`) beskriver luft/jord-grænser pr. afgrøde og hvad der sendes som aggregeret `bounds` til vind og luft. Plantekasseprofiler (`plant_boxes`) har egne felter til jord/pumpe/hysterese og styrer vanding på Pi 2 kun når præcis én er aktiv.
+**Afgrøde-profiler** og **plantekasseprofiler** er to separate ting: afgrøde-profiler (tabellen `profiles`) beskriver luft/jord-grænser pr. afgrøde og hvad der sendes som aggregeret `bounds` til vind og luft. Plantekasseprofiler (`plant_boxes`) har **`min_soil_pct`** og **`hysteresis_sec`** (pause mellem vandinger). Kun **fuldt udfyldte** rækker gemmes og sendes i `set_config`. Pumpe: fast **1 s** (~25 ml) i feltet — ikke konfigurerbar fra web.
 
 - Web-ui og database bruger tabellen `plant_boxes` og JSON-nøglen **`plant_boxes`** i `set_config` (ingen rename af disse tekniske navne).
 - **Officiel vandingslogik på klienten (miljøstyring):**
   - **0 aktive** plantekasseprofiler (`is_active` false på alle) betyder **ingen vanding** (fail-safe).
-  - **Præcis 1 aktiv** betyder kun den profils **`min_soil_pct`**, **`max_soil_pct`**, **`pump_duration_sec`** og **`hysteresis_sec`** styrer jord/pumpe på Pi 2; profilens aggregerede jordgrænser i `bounds` bruges **ikke** som fallback for vanding.
+  - **Præcis 1 aktiv** (med begge felter sat) styrer jord/pumpe på Pi 2 via `setMinimumThreshold` / pause; `bounds` bruges **ikke** til vanding.
   - **Flere end én aktiv** betyder **ingen vanding** (fail-safe) og tydelig log på klienten.
 - **Én aktiv ad gangen** håndhæves også i databasen ved gem (upsert afvises hvis en anden allerede er aktiv). Web-ui blokerer samme tilstand client-side; ved afvisning returnerer `POST /api/plant-boxes/upsert` JSON med `"ok":false` og feltet **`error`** (kort dansk forklaring).
 - Pi 2 bruger i dag kun én fysisk kasse (slot 1); øvrige rækker er konfigurationsdata til senere multi-kasse.

@@ -22,7 +22,8 @@ PlantBox::PlantBox(int boxId, int pumpPin)
       pumpPin(pumpPin),
       file(-1),
       running(false),
-      minimumThreshold(20),
+      minimumThreshold(100),
+      pauseBetweenWateringSec(86400),
       airValue(1600),
       waterValue(400) {
     file = open("/dev/i2c-1", O_RDWR);
@@ -61,6 +62,18 @@ void PlantBox::setMinimumThreshold(int value) {
     if (value >= 0 && value <= 100) {
         minimumThreshold = value;
     }
+}
+
+void PlantBox::setPauseBetweenWateringSec(int value) {
+    if (value < 0) {
+        pauseBetweenWateringSec = 0;
+        return;
+    }
+    if (value > 86400) {
+        pauseBetweenWateringSec = 86400;
+        return;
+    }
+    pauseBetweenWateringSec = value;
 }
 
 int PlantBox::readADC() {
@@ -179,7 +192,8 @@ void PlantBox::monitorLoop() {
             // Hvis jorden er for tør
             if (actuation_enabled_.load(std::memory_order_relaxed) &&
                 averageMoisture <= minimumThreshold && pumpPauseTime < std::chrono::system_clock::now()) {
-                pumpPauseTime = std::chrono::system_clock::now() + std::chrono::seconds(10);
+                pumpPauseTime = std::chrono::system_clock::now()
+                    + std::chrono::seconds(pauseBetweenWateringSec);
                 printf(
                     "Box %d | Pump ON\n",
                     boxId
@@ -200,8 +214,9 @@ void PlantBox::monitorLoop() {
                 );
 
                 printf(
-                    "Box %d | Waiting 10 minutes\n",
-                    boxId
+                    "Box %d | Waiting %d seconds\n",
+                    boxId,
+                    pauseBetweenWateringSec
                 );
 
                 // Pause efter vanding

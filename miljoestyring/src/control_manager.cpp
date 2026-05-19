@@ -8,6 +8,7 @@
 #endif
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
+#include "shared/types.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +33,7 @@ enum class PlantWateringMode {
     MissingPlantBoxes,
     NoActiveProfile,
     MultipleActiveProfiles,
+    IncompleteActiveProfile,
     SingleActiveProfile,
 };
 
@@ -78,25 +80,27 @@ static PlantWateringDecision evaluate_plant_watering(const nlohmann::json& param
         d.active_label = box["label"].get<std::string>();
     }
 
-    double min_soil = box.value("min_soil_pct", 35.0);
-    double max_soil = box.value("max_soil_pct", 100.0);
-    int smin = static_cast<int>(std::lround(min_soil));
-    int smax = static_cast<int>(std::lround(max_soil));
-    smin = std::max(0, std::min(100, smin));
-    smax = std::max(0, std::min(100, smax));
-    if (smin > smax) {
-        std::swap(smin, smax);
+    double min_soil_raw = kPlantBoxUnsetMinSoilPct;
+    if (box.contains("min_soil_pct") && !box["min_soil_pct"].is_null() && box["min_soil_pct"].is_number()) {
+        min_soil_raw = box["min_soil_pct"].get<double>();
     }
-    d.min_soil_pct = smin;
-    d.max_soil_pct = smax;
+    int hyst_raw = kPlantBoxUnsetHysteresisSec;
+    if (box.contains("hysteresis_sec") && !box["hysteresis_sec"].is_null() && box["hysteresis_sec"].is_number()) {
+        hyst_raw = box["hysteresis_sec"].get<int>();
+    }
+    PlantBoxConfig cfg;
+    cfg.min_soil_pct = min_soil_raw;
+    cfg.hysteresis_sec = hyst_raw;
+    if (!plant_box_watering_params_configured(cfg)) {
+        d.mode = PlantWateringMode::IncompleteActiveProfile;
+        return d;
+    }
 
-    int pump = box.value("pump_duration_sec", 1);
-    pump = std::max(1, std::min(3600, pump));
-    d.pump_duration_sec = pump;
-
-    int hyst = box.value("hysteresis_sec", 600);
-    hyst = std::max(0, std::min(864000, hyst));
-    d.hysteresis_sec = hyst;
+    const int smin = static_cast<int>(std::lround(min_soil_raw));
+    d.min_soil_pct = std::max(0, std::min(100, smin));
+    d.max_soil_pct = 100;
+    d.pump_duration_sec = 1;
+    d.hysteresis_sec = std::max(0, std::min(86400, hyst_raw));
 
     return d;
 }
@@ -124,30 +128,37 @@ static void log_plant_watering_decision(const PlantWateringDecision& decision) {
                 "Not using profile bounds for soil/pump."
             );
             break;
+        case PlantWateringMode::IncompleteActiveProfile:
+            log_warn(
+                "control_manager",
+                "Plant watering disabled: active plant_boxes profile mangler min_soil_pct og/eller "
+                "hysteresis_sec (skal udfyldes i web UI)."
+            );
+            break;
         case PlantWateringMode::SingleActiveProfile:
             log_info(
                 "control_manager",
                 "Applied single active plant_boxes profile: id=" + std::to_string(decision.active_id) +
                     " label=\"" + decision.active_label + "\" min_soil_pct=" + std::to_string(decision.min_soil_pct) +
-                    " (applied to watering threshold). Fields max_soil_pct=" + std::to_string(decision.max_soil_pct) +
-                    ", pump_duration_sec=" + std::to_string(decision.pump_duration_sec) +
-                    ", hysteresis_sec=" + std::to_string(decision.hysteresis_sec) +
-                    " are not consumed by PlantBox (partner zip semantics). Ventilation air limits still follow aggregated profile bounds."
+                    " hysteresis_sec=" + std::to_string(decision.hysteresis_sec) +
+                    " (setMinimumThreshold/setPauseBetweenWateringSec). Pump 1 s fixed in field (~25 ml). "
+                    "Ventilation air limits still follow aggregated profile bounds."
             );
             break;
     }
 }
 
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-/** Field hardware (partner zip): kun `min_soil_pct` påvirker pumpelogik via setMinimumThreshold. */
 static void apply_plant_water_decision(PlantBox* plant_box_hw, const PlantWateringDecision& decision) {
     if (plant_box_hw == nullptr) {
         return;
     }
     if (decision.mode == PlantWateringMode::SingleActiveProfile) {
         plant_box_hw->setMinimumThreshold(decision.min_soil_pct);
+        plant_box_hw->setPauseBetweenWateringSec(decision.hysteresis_sec);
     } else {
         plant_box_hw->setMinimumThreshold(100);
+        plant_box_hw->setPauseBetweenWateringSec(86400);
     }
 }
 #endif

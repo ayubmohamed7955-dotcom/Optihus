@@ -59,7 +59,7 @@ Ud over `profile_name`, `profile_names`, `interval_sec`, `emergency_stop` kan se
 **Officielle regler:**
 
 - **0 aktive** profiler i `plant_boxes` betyder **ingen vanding** (felt-hardware: via `setMinimumThreshold(100)`).
-- **Præcis 1 aktiv** betyder at **tør-tærsklen** for vanding sættes fra profilens `min_soil_pct` (`setMinimumThreshold`). Felterne `max_soil_pct`, `pump_duration_sec` og `hysteresis_sec` findes i JSON og logges, men **styres ikke** af den nuværende partner-hardware `PlantBox` (fast pumpe‑/pauselogik i feltkoden).
+- **Præcis 1 aktiv** med udfyldt `min_soil_pct` og `hysteresis_sec` (pause mellem vandinger, sek.) sætter henholdsvis `setMinimumThreshold` og `setPauseBetweenWateringSec`. Tomme/−1 værdier i web = ingen vanding. Pumpe **1 s** fast (~25 ml). `max_soil_pct` og `pump_duration_sec` i JSON bruges ikke på Pi 2.
 - **Flere end én aktiv** betyder **ingen vanding** (fail-safe) og tydelig log.
 
 Internt sættes i fail-safe-tilstande **høj tør-tærskel** på vanding (`setMinimumThreshold(100)`), så `PlantBox` ikke udløser pumpe; det er kun en felt-implementering i `PlantBox`/`control_manager`.
@@ -83,7 +83,7 @@ Anbefaling: **én JSON-linje pr. `Telemetry`-besked** (som nu). Ved flere kasser
 
 Efter hver **`set_config`** gemmes parametrene atomisk på disk sammen med **`emergency_halt`** (overlay). Ved **`emergency_stop`** / **`clear_emergency_stop`** opdateres kun overlayet, hvis filen findes.
 
-- **Linux (standard):** `/var/lib/optihus/miljoestyring_field_config.json` — mappen skal kunne oprettes/skrives af den bruger der kører feltnoden (evt. `sudo mkdir -p /var/lib/optihus && sudo chown …`).
+- **Linux (standard):** `~/.local/share/optihus/miljoestyring_field_config.json` (oprettes automatisk for den bruger der kører processen). Valgfrit: `export OPTIHUS_STATE_DIR=/var/lib/optihus` hvis I vil dele én systemsti.
 - **Windows (udvikling):** `./optihus_state/` under proces­ens arbejdsmappe.
 - **Override:** miljøvariabel **`OPTIHUS_STATE_DIR`** (sti til mappe).
 

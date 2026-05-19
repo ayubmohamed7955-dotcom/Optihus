@@ -126,7 +126,8 @@ void TuiManager::list_profiles() const {
     for (const auto& p : profiles) {
         std::cout << " - " << p.name << ", luftfugtighed ["
                   << p.min_humidity_air << ", " << p.max_humidity_air << "], jordfugtighed ["
-                  << p.min_humidity_soil << ", " << p.max_humidity_soil
+                  << p.min_humidity_soil << ", " << p.max_humidity_soil << "], temp ["
+                  << p.min_temp_c << ", " << p.max_temp_c
                   << "], interval=" << p.interval_sec << " sek\n";
     }
 }
@@ -182,6 +183,10 @@ void TuiManager::create_profile() {
     std::cin >> profile.min_humidity_soil;
     std::cout << "Maksimum jordfugtighed: ";
     std::cin >> profile.max_humidity_soil;
+    std::cout << "Minimum temperatur (C): ";
+    std::cin >> profile.min_temp_c;
+    std::cout << "Maksimum temperatur (C): ";
+    std::cin >> profile.max_temp_c;
     std::cout << "Interval (sekunder): ";
     std::cin >> profile.interval_sec;
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');

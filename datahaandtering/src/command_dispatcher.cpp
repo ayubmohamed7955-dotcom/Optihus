@@ -9,6 +9,7 @@
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
 #include "shared/time_utils.hpp"
+#include "shared/types.hpp"
 
 static std::vector<std::string> split_csv(const std::string& value) {
     std::vector<std::string> out;
@@ -33,6 +34,8 @@ struct AggregatedBounds {
     double max_humidity_air {0.0};
     double min_humidity_soil {0.0};
     double max_humidity_soil {0.0};
+    double min_temp_c {18.0};
+    double max_temp_c {26.0};
 };
 
 static bool aggregate_bounds_if_compatible(
@@ -46,6 +49,8 @@ static bool aggregate_bounds_if_compatible(
     out_bounds.max_humidity_air = selected_profiles.front().max_humidity_air;
     out_bounds.min_humidity_soil = selected_profiles.front().min_humidity_soil;
     out_bounds.max_humidity_soil = selected_profiles.front().max_humidity_soil;
+    out_bounds.min_temp_c = selected_profiles.front().min_temp_c;
+    out_bounds.max_temp_c = selected_profiles.front().max_temp_c;
 
     for (std::size_t i = 1; i < selected_profiles.size(); ++i) {
         const auto& p = selected_profiles[i];
@@ -53,9 +58,12 @@ static bool aggregate_bounds_if_compatible(
         out_bounds.max_humidity_air = std::min(out_bounds.max_humidity_air, p.max_humidity_air);
         out_bounds.min_humidity_soil = std::max(out_bounds.min_humidity_soil, p.min_humidity_soil);
         out_bounds.max_humidity_soil = std::min(out_bounds.max_humidity_soil, p.max_humidity_soil);
+        out_bounds.min_temp_c = std::max(out_bounds.min_temp_c, p.min_temp_c);
+        out_bounds.max_temp_c = std::min(out_bounds.max_temp_c, p.max_temp_c);
     }
     return out_bounds.min_humidity_air <= out_bounds.max_humidity_air &&
-        out_bounds.min_humidity_soil <= out_bounds.max_humidity_soil;
+        out_bounds.min_humidity_soil <= out_bounds.max_humidity_soil &&
+        out_bounds.min_temp_c <= out_bounds.max_temp_c;
 }
 
 static bool build_bounds_payload(
@@ -78,39 +86,47 @@ static bool build_bounds_payload(
         return false;
     }
     AggregatedBounds bounds {};
-    if (!aggregate_bounds_if_compatible(selected, bounds)) {
+    const bool humidity_ok = aggregate_bounds_if_compatible(selected, bounds);
+    if (humidity_ok) {
+        out_bounds = nlohmann::json {
+            {"min_humidity_air", bounds.min_humidity_air},
+            {"max_humidity_air", bounds.max_humidity_air},
+            {"min_humidity_soil", bounds.min_humidity_soil},
+            {"max_humidity_soil", bounds.max_humidity_soil},
+        };
+    } else {
         log_warn(
             "command_dispatcher",
             "Selected profiles have no overlapping humidity bounds; omitting bounds from set_config"
         );
-        return false;
     }
-    out_bounds = nlohmann::json {
-        {"min_humidity_air", bounds.min_humidity_air},
-        {"max_humidity_air", bounds.max_humidity_air},
-        {"min_humidity_soil", bounds.min_humidity_soil},
-        {"max_humidity_soil", bounds.max_humidity_soil},
-    };
-    // Profiles have no air temperature yet; send safe wide defaults for the window motor.
-    out_temp_bounds = nlohmann::json {
-        {"min", 12.0},
-        {"max", 35.0},
-    };
-    return true;
+    if (bounds.min_temp_c <= bounds.max_temp_c) {
+        out_temp_bounds = nlohmann::json {
+            {"min", bounds.min_temp_c},
+            {"max", bounds.max_temp_c},
+        };
+    } else {
+        log_warn(
+            "command_dispatcher",
+            "Selected profiles have no overlapping temperature bounds; omitting temp_bounds_c from set_config"
+        );
+    }
+    return humidity_ok || !out_temp_bounds.is_null();
 }
 
 static nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
     const auto boxes = db_manager.list_plant_boxes();
     nlohmann::json out = nlohmann::json::array();
     for (const auto& box : boxes) {
+        if (!plant_box_watering_params_configured(box)) {
+            continue;
+        }
         out.push_back(nlohmann::json {
             {"id", box.id},
             {"label", box.label},
             {"slot", box.slot},
             {"is_active", box.is_active},
             {"min_soil_pct", box.min_soil_pct},
-            {"max_soil_pct", box.max_soil_pct},
-            {"pump_duration_sec", box.pump_duration_sec},
             {"hysteresis_sec", box.hysteresis_sec},
         });
     }
@@ -129,7 +145,7 @@ bool CommandDispatcher::dispatch_current_config() {
     const auto profile_names = split_csv(config.profile_name);
     nlohmann::json bounds;
     nlohmann::json temp_bounds;
-    const bool have_bounds = build_bounds_payload(db_manager_, profile_names, bounds, temp_bounds);
+    (void)build_bounds_payload(db_manager_, profile_names, bounds, temp_bounds);
 
     CommandPayload payload;
     payload.action = "set_config";
@@ -138,10 +154,14 @@ bool CommandDispatcher::dispatch_current_config() {
         {"profile_names", profile_names},
         {"interval_sec", config.interval_sec},
         {"emergency_stop", config.emergency_stop},
+        {"ventilation_enabled", config.ventilation_enabled},
+        {"watering_enabled", config.watering_enabled},
         {"plant_boxes", build_plant_boxes_payload(db_manager_)},
     };
-    if (have_bounds) {
+    if (!bounds.is_null()) {
         payload.params["bounds"] = std::move(bounds);
+    }
+    if (!temp_bounds.is_null()) {
         payload.params["temp_bounds_c"] = std::move(temp_bounds);
     }
     return enqueue_command(payload, "queued");

@@ -7,8 +7,8 @@ namespace miljoestyring {
 
 /**
  * Gemmer sidste komplette set_config-params og aktuel nødstop-tilstand (Pi reboot persistence).
- * Standardsti: Linux `/var/lib/optihus/miljoestyring_field_config.json`, Windows `./optihus_state/`.
- * Overstyres med miljøvariabel OPTIHUS_STATE_DIR.
+ * Standardsti: Linux `~/.local/share/optihus/miljoestyring_field_config.json` (eller `./optihus_state/` uden HOME),
+ * Windows `./optihus_state/`. Overstyres med miljøvariabel OPTIHUS_STATE_DIR (fx `/var/lib/optihus`).
  */
 bool persist_field_config_after_set_config(const nlohmann::json& params, bool emergency_halt_runtime);
 

@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     max_humidity_air REAL NOT NULL,
     min_humidity_soil REAL NOT NULL,
     max_humidity_soil REAL NOT NULL,
+    min_temp_c REAL NOT NULL DEFAULT 18,
+    max_temp_c REAL NOT NULL DEFAULT 26,
     interval_sec INTEGER NOT NULL,
     is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -46,7 +48,9 @@ CREATE TABLE IF NOT EXISTS active_config (
     mode TEXT NOT NULL CHECK (mode IN ('auto', 'manual')),
     profile_name TEXT NOT NULL,
     interval_sec INTEGER NOT NULL,
-    emergency_stop INTEGER NOT NULL DEFAULT 0 CHECK (emergency_stop IN (0, 1))
+    emergency_stop INTEGER NOT NULL DEFAULT 0 CHECK (emergency_stop IN (0, 1)),
+    ventilation_enabled INTEGER NOT NULL DEFAULT 1 CHECK (ventilation_enabled IN (0, 1)),
+    watering_enabled INTEGER NOT NULL DEFAULT 1 CHECK (watering_enabled IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS command_history (
@@ -65,10 +69,10 @@ CREATE TABLE IF NOT EXISTS plant_boxes (
     label TEXT NOT NULL,
     slot INTEGER NOT NULL UNIQUE,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    min_soil_pct REAL NOT NULL DEFAULT 35,
+    min_soil_pct REAL NOT NULL DEFAULT -1,
     max_soil_pct REAL NOT NULL DEFAULT 100,
     pump_duration_sec INTEGER NOT NULL DEFAULT 1,
-    hysteresis_sec INTEGER NOT NULL DEFAULT 600,
+    hysteresis_sec INTEGER NOT NULL DEFAULT -1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -80,5 +84,5 @@ SELECT 1, '1970-01-01T00:00:00Z', 'auto', 'tomato', 60, 0
 WHERE NOT EXISTS (SELECT 1 FROM active_config WHERE id = 1);
 
 INSERT INTO plant_boxes (label, slot, is_active, created_at, updated_at)
-SELECT 'Plantekasse 1', 1, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
+SELECT 'Plantekasse 1', 1, 0, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
 WHERE NOT EXISTS (SELECT 1 FROM plant_boxes);

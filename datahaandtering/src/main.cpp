@@ -52,9 +52,9 @@ int main(int argc, char** argv) {
     const auto ensure_default_profiles = [&db_manager]() {
         const auto now = now_utc_iso8601();
         const std::array<Profile, 3> defaults {
-            Profile {"tomato", 55.0, 75.0, 35.0, 60.0, 60, true},
-            Profile {"cucumber", 60.0, 85.0, 45.0, 70.0, 60, true},
-            Profile {"chili", 50.0, 70.0, 30.0, 55.0, 60, true},
+            Profile {"tomato", 55.0, 75.0, 35.0, 60.0, 18.0, 26.0, 60, true},
+            Profile {"cucumber", 60.0, 85.0, 45.0, 70.0, 20.0, 28.0, 60, true},
+            Profile {"chili", 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, true},
         };
         for (const auto& profile : defaults) {
             db_manager.upsert_profile(profile, now);

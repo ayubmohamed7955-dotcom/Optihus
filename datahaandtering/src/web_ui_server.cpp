@@ -48,6 +48,24 @@ static void close_socket(int socket_fd) {
 #endif
 }
 
+static std::optional<bool> parse_bool_query(
+    const std::unordered_map<std::string, std::string>& query,
+    const char* key
+) {
+    const auto it = query.find(key);
+    if (it == query.end()) {
+        return std::nullopt;
+    }
+    const auto& v = it->second;
+    if (v == "1" || v == "true" || v == "on") {
+        return true;
+    }
+    if (v == "0" || v == "false" || v == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
 static std::unordered_map<std::string, std::string> parse_query(std::string_view request_line) {
     const auto hex_value = [](unsigned char c) -> int {
         if (c >= '0' && c <= '9') {
@@ -541,6 +559,14 @@ bool WebUiServer::handle_config_request(
             config_manager_.set_profile_name(it->second);
             changed = true;
         }
+        if (const auto vent = parse_bool_query(query, "ventilation_enabled"); vent.has_value()) {
+            config_manager_.set_ventilation_enabled(*vent);
+            changed = true;
+        }
+        if (const auto water = parse_bool_query(query, "watering_enabled"); water.has_value()) {
+            config_manager_.set_watering_enabled(*water);
+            changed = true;
+        }
         if (changed) {
             config_manager_.set_interval_sec(60);
             const bool saved = config_manager_.save_active_config();
@@ -609,6 +635,25 @@ bool WebUiServer::handle_profiles_request(
             p.max_humidity_air = clamp_profile_pct(std::stod(query.at("max_air")));
             p.min_humidity_soil = clamp_profile_pct(std::stod(query.at("min_soil")));
             p.max_humidity_soil = clamp_profile_pct(std::stod(query.at("max_soil")));
+            const auto clamp_profile_temp = [](double v) -> double {
+                if (!std::isfinite(v)) {
+                    return 18.0;
+                }
+                if (v < -10.0) {
+                    v = -10.0;
+                }
+                if (v > 50.0) {
+                    v = 50.0;
+                }
+                return std::round(v * 10.0) / 10.0;
+            };
+            p.min_temp_c = clamp_profile_temp(std::stod(query.at("min_temp")));
+            p.max_temp_c = clamp_profile_temp(std::stod(query.at("max_temp")));
+            if (p.min_temp_c > p.max_temp_c) {
+                status_line = "HTTP/1.1 400 Bad Request\r\n";
+                body = "{\"error\":\"min_temp must be <= max_temp\"}\n";
+                return true;
+            }
             p.interval_sec = 60;
             if (const auto it = query.find("interval"); it != query.end() && !it->second.empty()) {
                 p.interval_sec = std::stoi(it->second);
@@ -758,12 +803,8 @@ bool WebUiServer::handle_plant_boxes_request(
         };
 
         bool have_min_soil = false;
-        bool have_max_soil = false;
-        bool have_pump = false;
         bool have_hyst = false;
         double min_soil_val = 0.0;
-        double max_soil_val = 0.0;
-        int pump_val = 0;
         int hyst_val = 0;
 
         if (query_nonempty("min_soil_pct")) {
@@ -773,26 +814,6 @@ bool WebUiServer::handle_plant_boxes_request(
             } catch (...) {
                 status_line = "HTTP/1.1 400 Bad Request\r\n";
                 body = "{\"error\":\"invalid min_soil_pct\"}\n";
-                return true;
-            }
-        }
-        if (query_nonempty("max_soil_pct")) {
-            try {
-                max_soil_val = std::stod(query.at("max_soil_pct"));
-                have_max_soil = true;
-            } catch (...) {
-                status_line = "HTTP/1.1 400 Bad Request\r\n";
-                body = "{\"error\":\"invalid max_soil_pct\"}\n";
-                return true;
-            }
-        }
-        if (query_nonempty("pump_duration_sec")) {
-            try {
-                pump_val = std::stoi(query.at("pump_duration_sec"));
-                have_pump = true;
-            } catch (...) {
-                status_line = "HTTP/1.1 400 Bad Request\r\n";
-                body = "{\"error\":\"invalid pump_duration_sec\"}\n";
                 return true;
             }
         }
@@ -827,38 +848,33 @@ bool WebUiServer::handle_plant_boxes_request(
                 return true;
             }
             plant_box.min_soil_pct = have_min_soil ? min_soil_val : existing->min_soil_pct;
-            plant_box.max_soil_pct = have_max_soil ? max_soil_val : existing->max_soil_pct;
-            plant_box.pump_duration_sec = have_pump ? pump_val : existing->pump_duration_sec;
             plant_box.hysteresis_sec = have_hyst ? hyst_val : existing->hysteresis_sec;
         } else {
             if (have_min_soil) {
                 plant_box.min_soil_pct = min_soil_val;
-            }
-            if (have_max_soil) {
-                plant_box.max_soil_pct = max_soil_val;
-            }
-            if (have_pump) {
-                plant_box.pump_duration_sec = pump_val;
             }
             if (have_hyst) {
                 plant_box.hysteresis_sec = hyst_val;
             }
         }
 
-        if (plant_box.min_soil_pct < 0.0 || plant_box.min_soil_pct > 100.0 || plant_box.max_soil_pct < 0.0 ||
-            plant_box.max_soil_pct > 100.0 || plant_box.min_soil_pct > plant_box.max_soil_pct) {
+        if (!plant_box_watering_params_configured(plant_box)) {
             status_line = "HTTP/1.1 400 Bad Request\r\n";
-            body = "{\"error\":\"invalid soil bounds (expect 0..100 and min<=max)\"}\n";
+            body =
+                "{\"error\":\"Udfyld minimum jordfugtighed (%) og pause mellem vandinger (sek.). "
+                "Ufuldstændige profiler gemmes ikke og sendes ikke til Pi. Pumpe: fast 1 s (~25 ml) i feltet.\"}\n";
             return true;
         }
-        if (plant_box.pump_duration_sec < 1 || plant_box.pump_duration_sec > 3600) {
+        if (plant_box.min_soil_pct < 0.0 || plant_box.min_soil_pct > 100.0) {
             status_line = "HTTP/1.1 400 Bad Request\r\n";
-            body = "{\"error\":\"invalid pump_duration_sec (expect 1..3600)\"}\n";
+            body = "{\"error\":\"invalid min_soil_pct (expect 0..100)\"}\n";
             return true;
         }
-        if (plant_box.hysteresis_sec < 0 || plant_box.hysteresis_sec > 864000) {
+        plant_box.max_soil_pct = 100.0;
+        plant_box.pump_duration_sec = 1;
+        if (plant_box.hysteresis_sec < 0 || plant_box.hysteresis_sec > 86400) {
             status_line = "HTTP/1.1 400 Bad Request\r\n";
-            body = "{\"error\":\"invalid hysteresis_sec (expect 0..864000)\"}\n";
+            body = "{\"error\":\"invalid hysteresis_sec (expect 0..86400)\"}\n";
             return true;
         }
 
@@ -1040,6 +1056,8 @@ std::string WebUiServer::build_config_json() const {
     oss << "],\n"
         << "  \"interval_sec\": " << cfg.interval_sec << ",\n"
         << "  \"emergency_stop\": " << (cfg.emergency_stop ? "true" : "false") << ",\n"
+        << "  \"ventilation_enabled\": " << (cfg.ventilation_enabled ? "true" : "false") << ",\n"
+        << "  \"watering_enabled\": " << (cfg.watering_enabled ? "true" : "false") << ",\n"
         << "  \"mode\": \"" << json_escape(to_string(cfg.mode)) << "\",\n"
         << "  \"saved_at\": \"" << json_escape(saved_at) << "\"\n"
         << "}\n";
@@ -1058,6 +1076,8 @@ std::string WebUiServer::build_profiles_json() const {
             << "    \"max_humidity_air\": " << p.max_humidity_air << ",\n"
             << "    \"min_humidity_soil\": " << p.min_humidity_soil << ",\n"
             << "    \"max_humidity_soil\": " << p.max_humidity_soil << ",\n"
+            << "    \"min_temp_c\": " << p.min_temp_c << ",\n"
+            << "    \"max_temp_c\": " << p.max_temp_c << ",\n"
             << "    \"interval_sec\": " << p.interval_sec << ",\n"
             << "    \"is_default\": " << (p.is_default ? "true" : "false") << "\n"
             << "  }";
@@ -1081,10 +1101,10 @@ std::string WebUiServer::build_plant_boxes_json() const {
             << "    \"label\": \"" << json_escape(box.label) << "\",\n"
             << "    \"slot\": " << box.slot << ",\n"
             << "    \"is_active\": " << (box.is_active ? "true" : "false") << ",\n"
-            << "    \"min_soil_pct\": " << box.min_soil_pct << ",\n"
-            << "    \"max_soil_pct\": " << box.max_soil_pct << ",\n"
-            << "    \"pump_duration_sec\": " << box.pump_duration_sec << ",\n"
-            << "    \"hysteresis_sec\": " << box.hysteresis_sec << "\n"
+            << "    \"min_soil_pct\": "
+            << (plant_box_min_soil_configured(box) ? std::to_string(box.min_soil_pct) : "null") << ",\n"
+            << "    \"hysteresis_sec\": "
+            << (plant_box_hysteresis_configured(box) ? std::to_string(box.hysteresis_sec) : "null") << "\n"
             << "  }";
         if (i + 1 < plant_boxes.size()) {
             oss << ",";
@@ -1245,11 +1265,23 @@ std::string WebUiServer::build_index_html() {
            "        </div>\n"
            "        <div class=\"drift-actions\">\n"
            "          <h3 class=\"drift-subtitle\">Handlinger</h3>\n"
-           "          <p class=\"drift-lead\">Nødstop styrer klienten direkte. Grafana i boksen nedenfor åbner kun read-only overblik.</p>\n"
+           "          <p class=\"drift-lead\">Nødstop, ventilation og vanding gemmes og sendes med det samme til Pi 2. Grafana nedenfor er kun read-only overblik.</p>\n"
            "          <div class=\"drift-actions-critical\">\n"
            "            <span class=\"critical-label\">Nødstop</span>\n"
            "            <button type=\"button\" onclick=\"sendControl('/api/control/emergency-stop?enabled=1')\" class=\"danger\">Nødstop</button>\n"
            "            <button type=\"button\" onclick=\"sendControl('/api/control/emergency-stop?enabled=0')\" class=\"secondary\">Fortsæt drift</button>\n"
+           "          </div>\n"
+           "          <div class=\"drift-actions-critical\" style=\"margin-top:0.65rem;\">\n"
+           "            <span class=\"critical-label\">Ventilation</span>\n"
+           "            <button type=\"button\" id=\"btnVentOn\" class=\"secondary\" onclick=\"setSystemEnabled('ventilation', true)\">Til</button>\n"
+           "            <button type=\"button\" id=\"btnVentOff\" class=\"secondary\" onclick=\"setSystemEnabled('ventilation', false)\">Fra</button>\n"
+           "            <span class=\"muted\" id=\"ventToggleState\" style=\"margin-left:0.35rem;font-size:0.85rem;\">—</span>\n"
+           "          </div>\n"
+           "          <div class=\"drift-actions-critical\" style=\"margin-top:0.45rem;\">\n"
+           "            <span class=\"critical-label\">Vanding</span>\n"
+           "            <button type=\"button\" id=\"btnWaterOn\" class=\"secondary\" onclick=\"setSystemEnabled('watering', true)\">Til</button>\n"
+           "            <button type=\"button\" id=\"btnWaterOff\" class=\"secondary\" onclick=\"setSystemEnabled('watering', false)\">Fra</button>\n"
+           "            <span class=\"muted\" id=\"waterToggleState\" style=\"margin-left:0.35rem;font-size:0.85rem;\">—</span>\n"
            "          </div>\n"
            "          <div class=\"drift-addon-box\">\n"
            "            <h4 class=\"drift-addon-title\">Grafana</h4>\n"
@@ -1279,12 +1311,12 @@ std::string WebUiServer::build_index_html() {
            "            <li><strong>Kladde:</strong> dit valg i tabellen før du trykker <em>Gem konfiguration</em>. Afviger kladde fra det gemte, bør du gemme eller justere valget.</li>\n"
            "            <li><strong>set_config:</strong> besked til miljøstyring med grænser m.m. Sendes ved <em>Gem konfiguration</em> (kladde gemmes og sendes, hvis klient/kø tillader det) eller via <em>Send konfiguration</em> under <em>Aktiv konfiguration</em> (kun gensend den allerede gemte aktive konfiguration).</li>\n"
            "            <li><strong>Afgrøde-type / profil:</strong> ét navn du vælger; det er også den unikke nøgle. <em>Redigér</em> fylder formularen; nyt navn erstatter den gamle profil og opdaterer aktiv konfiguration i databasen hvis navnet blev brugt der.</li>\n"
-           "            <li><strong>To slags profiler:</strong> <strong>Afgrøde-profiler</strong> (sektionen <em>Profiler</em>) gemmer luft- og jordfugt-grænser pr. navn. Du vælger hvilke der skal med under <em>Gem konfiguration</em>; de sendes i <code>set_config</code> og bruges til luftgrænser for vinduet (og til motor og temperaturfelter). Jordfelterne i den samme besked (<code>bounds</code>) styrer <strong>ikke</strong> vanding i v1. <strong>Plantekasseprofiler</strong> (sektionen <em>Plantekasser</em>) har egne jord min/maks (%), pumpevarighed og hysterese samt feltet <em>aktiv</em>; det er disse værdier Pi 2 bruger til vanding, og kun når præcis én plantekasseprofil er aktiv.</li>\n"
+           "            <li><strong>To slags profiler:</strong> <strong>Afgrøde-profiler</strong> (sektionen <em>Profiler</em>) gemmer luft- og jordfugt-grænser pr. navn. Du vælger hvilke der skal med under <em>Gem konfiguration</em>; de sendes i <code>set_config</code> og bruges til luftgrænser for vinduet (og til motor og temperaturfelter). Jordfelterne i den samme besked (<code>bounds</code>) styrer <strong>ikke</strong> vanding i v1. <strong>Plantekasseprofiler</strong> (sektionen <em>Plantekasser</em>): du udfylder selv <strong>minimum jordfugtighed (%)</strong> og <strong>pause mellem vandinger (sek.)</strong> — ingen systemstandard. Pi 2 bruger kun den aktive profil når begge felter er sat og præcis én plantekasse er aktiv; pumpe kører <strong>1&nbsp;s</strong> pr. gang (~<strong>25&nbsp;ml</strong> ved ca. 25&nbsp;ml/s — planlæg efter kassestørrelse og din pumpe).</li>\n"
            "            <li><strong>Mærkat <span class=\"pill server\">Gemt</span>:</strong> profilen indgår i den <em>gemte</em> aktive konfiguration på serveren (ikke det samme som at Pi har kvitteret).</li>\n"
            "            <li><strong>Mærkat <span class=\"pill draft\">Kladde</span>:</strong> profilen er valgt til næste <em>Gem konfiguration</em> men indgår <em>ikke</em> i den <em>gemte</em> aktive konfiguration endnu; vises ikke hvis profilen allerede er gemt som del af aktiv konfiguration.</li>\n"
            "            <li><strong>Send til klient / kø:</strong> om sidste <code>set_config</code> matcher den gemte konfiguration og om en klient er tilkoblet, fremgår under <em>Drift</em>, overskriften <em>Status</em> (samme for hele systemet, ikke per profil-række).</li>\n"
            "            <li><strong>Luft- og jordfugtighed i profiler:</strong> nedre/øvre grænser; ved flere valgte profiler i aktiv konfiguration beregnes fælles grænser (højeste minimum, laveste maksimum) og sendes i <code>bounds</code> til miljøstyring til <strong>luft</strong> m.m. De samme jordfelter i <code>bounds</code> styrer <strong>ikke</strong> vanding på Pi 2 i v1 (se <strong>Plantekasser</strong> nedenfor).</li>\n"
-           "            <li><strong>Plantekasser (<code>plant_boxes</code>):</strong> separate profiler med egen jord/pumpe/hysterese. I tabellen viser <span class=\"pill ok\">ja</span> / <span class=\"pill warn\">nej</span> om profilen er <em>aktiv</em>. <strong>Højst én</strong> aktiv ad gangen (0 aktive giver ingen vanding; flere end én aktiv giver ingen vanding på klienten). Send-status står under <em>Drift</em>, overskriften <em>Status</em>.</li>\n"
+           "            <li><strong>Plantekasser (<code>plant_boxes</code>):</strong> valgfrit. Kun <strong>fuldt udfyldte</strong> profiler gemmes og sendes til Pi. <strong>Højst én</strong> aktiv ad gangen. <em>Vanding til/fra</em> under <em>Drift</em> styrer om pumpen må køre; mængde vand er fast (~25&nbsp;ml pr. 1&nbsp;s i feltet).</li>\n"
            "            <li><strong>Telemetri:</strong> fast interval 60 s til serveren.</li>\n"
            "            <li><strong>Nødstop:</strong> kun via knapper under <em>Drift</em>, overskriften <em>Handlinger</em>.</li>\n"
            "          </ul>\n"
@@ -1318,19 +1350,21 @@ std::string WebUiServer::build_index_html() {
            "            <div class=\"field\"><label>Maksimum luftfugtighed</label><input id=\"p_max_air\" type=\"number\" min=\"0\" max=\"99\" step=\"0.1\" inputmode=\"decimal\" placeholder=\"f.eks. 70\" autocomplete=\"off\"></div>\n"
            "            <div class=\"field\"><label>Minimum jordfugtighed</label><input id=\"p_min_soil\" type=\"number\" min=\"0\" max=\"99\" step=\"0.1\" inputmode=\"decimal\" placeholder=\"f.eks. 30\" autocomplete=\"off\"></div>\n"
            "            <div class=\"field\"><label>Maksimum jordfugtighed</label><input id=\"p_max_soil\" type=\"number\" min=\"0\" max=\"99\" step=\"0.1\" inputmode=\"decimal\" placeholder=\"f.eks. 55\" autocomplete=\"off\"></div>\n"
+           "            <div class=\"field\"><label>Minimum temperatur (°C)</label><input id=\"p_min_temp\" type=\"number\" min=\"-10\" max=\"50\" step=\"0.1\" inputmode=\"decimal\" placeholder=\"f.eks. 18\" autocomplete=\"off\"></div>\n"
+           "            <div class=\"field\"><label>Maksimum temperatur (°C)</label><input id=\"p_max_temp\" type=\"number\" min=\"-10\" max=\"50\" step=\"0.1\" inputmode=\"decimal\" placeholder=\"f.eks. 26\" autocomplete=\"off\"></div>\n"
            "          </div>\n"
            "          <div class=\"profile-form-actions\">\n"
            "            <button type=\"button\" id=\"btnProfileSave\" disabled onclick=\"saveProfile()\">Gem profil</button>\n"
            "            <button type=\"button\" id=\"btnProfileCancelEdit\" class=\"secondary\" style=\"display:none\" onclick=\"cancelProfileEdit()\">Annullér redigering</button>\n"
            "          </div>\n"
            "        </div>\n"
-           "        <p class=\"hint\" style=\"margin-top:0.35rem;\">Luft- og jordfugtighed angives som <strong>procent (0 til 99)</strong>, ikke grader. Negative tal tillades ikke; højst ét ciffer efter decimal (komma eller punktum).</p>\n"
+           "        <p class=\"hint\" style=\"margin-top:0.35rem;\">Luft- og jordfugtighed: <strong>procent (0 til 99)</strong>. Temperatur (vindue/motor): <strong>grader Celsius (-10 til 50)</strong> under felterne ovenfor — gem profil og derefter <strong>Gem konfiguration</strong> for at sende til Pi 2. Højst ét ciffer efter decimal (komma eller punktum).</p>\n"
            "        <p class=\"hint warn\" id=\"profileDuplicateHint\" style=\"display:none;margin-top:0.25rem;\"></p>\n"
            "        <p class=\"hint\" id=\"profileEditHint\"></p>\n"
            "        <div style=\"overflow:auto; margin-top:0.8rem;\">\n"
            "          <table class=\"data-table profiles-data\">\n"
-           "            <thead><tr><th>Afgrøde-type</th><th>Luft min/maks</th><th>Jord min/maks</th><th>Handlinger</th></tr></thead>\n"
-           "            <tbody id=\"profilesBody\"><tr><td colspan=\"4\">Indlæser...</td></tr></tbody>\n"
+           "            <thead><tr><th>Afgrøde-type</th><th>Luft min/maks</th><th>Jord min/maks</th><th>Temp min/maks (C)</th><th>Handlinger</th></tr></thead>\n"
+           "            <tbody id=\"profilesBody\"><tr><td colspan=\"5\">Indlæser...</td></tr></tbody>\n"
            "          </table>\n"
            "        </div>\n"
            "        <p class=\"hint\"><span class=\"pill server\">Gemt</span> = profil i <em>gemt</em> aktiv konfiguration på serveren. <span class=\"pill draft\">Kladde</span> = valgt til næste <strong>Gem konfiguration</strong> men <em>ikke</em> i den gemte aktive konfiguration endnu. Om sidste <code>set_config</code> matcher og om klient er tilkoblet, står under <em>Drift</em>, overskriften <em>Status</em>. Ændrede profil-tal kræver <strong>Gem konfiguration</strong> for næste send.</p>\n"
@@ -1338,27 +1372,25 @@ std::string WebUiServer::build_index_html() {
            "      <section class=\"card\" style=\"grid-column: 1 / -1;\">\n"
            "        <h2>Plantekasser</h2>\n"
            "        <p class=\"hint\">Her opretter du <strong>plantekasseprofiler</strong> (gemmes som <code>plant_boxes</code> og sendes i <code>set_config</code>). Pi 2 bruger i dag kun slot 1 fysisk; øvrige rækker er til senere multi-kasse.</p>\n"
-           "        <p class=\"hint warn\"><strong>Vanding (v1):</strong> Kun hvis <strong>præcis én</strong> profil er <em>aktiv</em>, bruger miljøstyringen dens jord min/maks (%), pumpevarighed og hysterese. <strong>0 aktive</strong> eller <strong>flere end én aktiv</strong> betyder ingen vanding (fail-safe på klienten). Profilernes jordgrænser i <code>bounds</code> erstatter ikke dette.</p>\n"
+           "        <p class=\"hint warn\"><strong>Plantekasse (valgfri):</strong> Ingen aktiv profil er OK. Vanding kræver <em>Vanding til</em> under Drift, præcis én aktiv profil, udfyldte tal herunder, og at nødstop ikke er aktiv. Pumpe i feltet: <strong>1&nbsp;s tændt</strong> ≈ <strong>25&nbsp;ml</strong> (ca. 25&nbsp;ml/s) — juster <em>pause</em> og <em>minimum jordfugt</em> efter kasse og pumpe; der er ingen forudfyldt standard.</p>\n"
            "        <div class=\"row\">\n"
            "          <div class=\"field\"><label>Id (tom = ny)</label><input id=\"pb_id\" type=\"number\" min=\"1\" placeholder=\"auto\"></div>\n"
            "          <div class=\"field\"><label>Navn</label><input id=\"pb_label\" placeholder=\"Plantekasse 1\"></div>\n"
            "          <div class=\"field\"><label>Pladsnr.</label><input id=\"pb_slot\" type=\"number\" min=\"1\" value=\"1\"></div>\n"
-           "          <div class=\"field\"><label>Aktiv</label><select id=\"pb_active\"><option value=\"1\">ja</option><option value=\"0\">nej</option></select></div>\n"
+           "          <div class=\"field\"><label>Aktiv</label><select id=\"pb_active\"><option value=\"0\">nej</option><option value=\"1\">ja</option></select></div>\n"
            "        </div>\n"
            "        <div class=\"row\" style=\"margin-top:0.45rem;\">\n"
-           "          <div class=\"field\"><label>Jord min (%)</label><input id=\"pb_min_soil\" type=\"number\" min=\"0\" max=\"100\" step=\"0.1\" value=\"35\"></div>\n"
-           "          <div class=\"field\"><label>Jord maks (%)</label><input id=\"pb_max_soil\" type=\"number\" min=\"0\" max=\"100\" step=\"0.1\" value=\"100\"></div>\n"
-           "          <div class=\"field\"><label>Pumpevarighed (s)</label><input id=\"pb_pump_duration\" type=\"number\" min=\"1\" max=\"3600\" step=\"1\" value=\"1\"></div>\n"
-           "          <div class=\"field\"><label>Hysterese (s)</label><input id=\"pb_hysteresis\" type=\"number\" min=\"0\" max=\"864000\" step=\"1\" value=\"600\"></div>\n"
+           "          <div class=\"field\"><label>Minimum jordfugtighed (%)</label><input id=\"pb_min_soil\" type=\"number\" min=\"0\" max=\"100\" step=\"1\" placeholder=\"f.eks. 35 — du vælger\"></div>\n"
+           "          <div class=\"field\"><label>Pause mellem vandinger (sek.)</label><input id=\"pb_hysteresis\" type=\"number\" min=\"0\" max=\"86400\" step=\"1\" placeholder=\"f.eks. 600 — du vælger\"></div>\n"
            "          <button type=\"button\" onclick=\"savePlantBox()\">Gem plantekasse</button>\n"
            "        </div>\n"
            "        <div style=\"overflow:auto; margin-top:0.8rem;\">\n"
            "          <table class=\"data-table plant-boxes-data\">\n"
-           "            <thead><tr><th>Id</th><th>Navn</th><th>Pladsnr.</th><th>Jord min</th><th>Jord maks</th><th>Pumpe (s)</th><th>Hyst. (s)</th><th>Aktiv</th><th>Handlinger</th></tr></thead>\n"
-           "            <tbody id=\"plantBoxesBody\"><tr><td colspan=\"9\">Indlæser...</td></tr></tbody>\n"
+           "            <thead><tr><th>Id</th><th>Navn</th><th>Pladsnr.</th><th>Jord min (%)</th><th>Pause (s)</th><th>Aktiv</th><th>Handlinger</th></tr></thead>\n"
+           "            <tbody id=\"plantBoxesBody\"><tr><td colspan=\"7\">Indlæser...</td></tr></tbody>\n"
            "          </table>\n"
            "        </div>\n"
-           "        <p class=\"hint\">Under <em>Aktiv</em>: <span class=\"pill ok\">ja</span> / <span class=\"pill warn\">nej</span> følger den <strong>officielle</strong> regel (højst én aktiv). Serveren blokerer forsøg på at gemme en <em>anden</em> aktiv profil. Deaktivér den eksisterende først. (En intern 100/100-tærskel på klienten kan bruges som teknisk stop og er <em>ikke</em> en brugerstyret driftsform.)</p>\n"
+           "        <p class=\"hint\">Under <em>Aktiv</em>: <span class=\"pill ok\">ja</span> / <span class=\"pill warn\">nej</span> — højst én aktiv ad gangen. <strong>Ingen aktiv</strong> er tilladt (valgfri plantekasse). Brug <em>Vanding til/fra</em> under Drift for at slå pumpen fra uanset plantekasse.</p>\n"
            "      </section>\n"
            "    </div>\n"
            "  </div>\n"
@@ -1370,7 +1402,7 @@ std::string WebUiServer::build_index_html() {
            "    const draftConfig = { profiles: [] };\n"
            "    let draftDirty = false;\n"
            "    let profileEditFrom = null;\n"
-           "    const profileFormFieldIds = ['p_crop', 'p_min_air', 'p_max_air', 'p_min_soil', 'p_max_soil'];\n"
+           "    const profileFormFieldIds = ['p_crop', 'p_min_air', 'p_max_air', 'p_min_soil', 'p_max_soil', 'p_min_temp', 'p_max_temp'];\n"
            "    function normalizeProfileNumber(raw) {\n"
            "      return String(raw ?? '').trim().replace(',', '.');\n"
            "    }\n"
@@ -1381,6 +1413,23 @@ std::string WebUiServer::build_index_html() {
            "      const n = Number(t);\n"
            "      if (!Number.isFinite(n) || n < 0 || n > 99) return false;\n"
            "      return true;\n"
+           "    }\n"
+           "    function profileTempInputOk(raw) {\n"
+           "      const t = normalizeProfileNumber(raw);\n"
+           "      if (!t) return false;\n"
+           "      if (!/^-?\\d+(\\.\\d)?$/.test(t)) return false;\n"
+           "      const n = Number(t);\n"
+           "      if (!Number.isFinite(n) || n < -10 || n > 50) return false;\n"
+           "      return true;\n"
+           "    }\n"
+           "    function profileTempForApi(raw) {\n"
+           "      const n = Number(normalizeProfileNumber(raw));\n"
+           "      if (!Number.isFinite(n)) return '';\n"
+           "      const clamped = Math.min(50, Math.max(-10, n));\n"
+           "      const r = Math.round(clamped * 10) / 10;\n"
+           "      if (Object.is(r, -0)) return '0';\n"
+           "      if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));\n"
+           "      return (Math.round(r * 10) / 10).toFixed(1);\n"
            "    }\n"
            "    /** Luft/jord %: 0-99, max et decimaltegn; afrundes til 1 decimal ved gem. */\n"
            "    function profileHumidityForApi(raw) {\n"
@@ -1397,7 +1446,7 @@ std::string WebUiServer::build_index_html() {
            "      for (const id of profileFormFieldIds) {\n"
            "        const el = document.getElementById(id);\n"
            "        if (!el) continue;\n"
-           "        const ok = id === 'p_crop' ? String(el.value ?? '').trim().length > 0 : profileNumericInputOk(el.value);\n"
+           "        const ok = id === 'p_crop' ? String(el.value ?? '').trim().length > 0 : (id === 'p_min_temp' || id === 'p_max_temp') ? profileTempInputOk(el.value) : profileNumericInputOk(el.value);\n"
            "        if (!ok) {\n"
            "          formOk = false;\n"
            "          el.classList.add('input-invalid');\n"
@@ -1489,6 +1538,34 @@ std::string WebUiServer::build_index_html() {
            "      if (Array.isArray(activeConfig.profile_names)) return dedupe(activeConfig.profile_names);\n"
            "      return parseCsvProfiles(activeConfig.profile_name || '');\n"
            "    }\n"
+           "    function aggregateProfileBounds(profileNames) {\n"
+           "      if (!Array.isArray(latestProfiles) || !profileNames || profileNames.length === 0) return null;\n"
+           "      const selected = profileNames.map(n => latestProfiles.find(p => p.name === n)).filter(Boolean);\n"
+           "      if (selected.length === 0) return null;\n"
+           "      let b = {\n"
+           "        min_air: selected[0].min_humidity_air,\n"
+           "        max_air: selected[0].max_humidity_air,\n"
+           "        min_soil: selected[0].min_humidity_soil,\n"
+           "        max_soil: selected[0].max_humidity_soil,\n"
+           "        min_temp: selected[0].min_temp_c,\n"
+           "        max_temp: selected[0].max_temp_c,\n"
+           "      };\n"
+           "      for (let i = 1; i < selected.length; i += 1) {\n"
+           "        const p = selected[i];\n"
+           "        b.min_air = Math.max(b.min_air, p.min_humidity_air);\n"
+           "        b.max_air = Math.min(b.max_air, p.max_humidity_air);\n"
+           "        b.min_soil = Math.max(b.min_soil, p.min_humidity_soil);\n"
+           "        b.max_soil = Math.min(b.max_soil, p.max_humidity_soil);\n"
+           "        b.min_temp = Math.max(b.min_temp, p.min_temp_c);\n"
+           "        b.max_temp = Math.min(b.max_temp, p.max_temp_c);\n"
+           "      }\n"
+           "      if (b.min_air > b.max_air || b.min_soil > b.max_soil || b.min_temp > b.max_temp) return null;\n"
+           "      return b;\n"
+           "    }\n"
+           "    function formatBoundsLine(b) {\n"
+           "      if (!b) return '<div class=\"kv muted\">Grænser: overlapper ikke mellem valgte profiler (juster tal eller vælg færre).</div>';\n"
+           "      return `<div class=\"kv\"><strong>Luft:</strong> ${escapeHtml(b.min_air)}–${escapeHtml(b.max_air)} % &nbsp; <strong>Jord (profil):</strong> ${escapeHtml(b.min_soil)}–${escapeHtml(b.max_soil)} % &nbsp; <strong>Temp:</strong> ${escapeHtml(b.min_temp)}–${escapeHtml(b.max_temp)} °C</div>`;\n"
+           "    }\n"
            "    function syncDraftFromActive() {\n"
            "      if (!activeConfig) return;\n"
            "      draftConfig.profiles = activeProfiles();\n"
@@ -1502,7 +1579,9 @@ std::string WebUiServer::build_index_html() {
            "      const del = latestServiceStatus || {};\n"
            "      const sendLine = del.config_delivery_hint ? `<div class=\"muted\" style=\"margin-top:0.45rem;font-size:0.82rem;line-height:1.35;\">${escapeHtml(del.config_delivery_hint)}</div>` : '';\n"
            "      activeSummary.innerHTML = `\n"
-           "        <div class=\"kv\"><strong>Profiler:</strong> ${escapeHtml(active.join(', ') || 'ingen')}</div>\n"
+           "        <div><div class=\"kv\"><strong>Profiler:</strong> ${escapeHtml(active.join(', ') || 'ingen')}</div>\n"
+           "        ${formatBoundsLine(aggregateProfileBounds(active))}\n"
+           "        <div class=\"kv\"><strong>Ventilation:</strong> ${activeConfig && activeConfig.ventilation_enabled !== false ? 'til' : 'fra'} &nbsp; <strong>Vanding:</strong> ${activeConfig && activeConfig.watering_enabled !== false ? 'til' : 'fra'}</div>\n"
            "        <div class=\"kv\"><strong>Senest gemt (server):</strong> ${saved}</div>\n"
            "        ${sendLine}`;\n"
            "      const draft = draftConfig.profiles;\n"
@@ -1512,6 +1591,7 @@ std::string WebUiServer::build_index_html() {
            "        : '<span class=\"pill ok\" style=\"margin-left:0.35rem;\">Matcher gemt</span>';\n"
            "      draftSummary.innerHTML = `\n"
            "        <div class=\"kv\"><strong>Profiler:</strong> ${escapeHtml(draft.join(', ') || 'ingen')}${draftTag}</div>\n"
+           "        ${formatBoundsLine(aggregateProfileBounds(draft))}\n"
            "        <div class=\"muted\" style=\"margin-top:0.45rem;font-size:0.82rem;\">Tryk <strong>Gem konfiguration</strong> for at skrive kladde til databasen og sætte <code>set_config</code> i kø (hvis klient er tilkoblet).</div>`;\n"
            "      if (draftConfig.profiles.length === 0) {\n"
            "        requirement.textContent = 'Du skal vælge mindst én profil i Profiler-sektionen før konfigurationen kan gemmes og køre.';\n"
@@ -1538,7 +1618,7 @@ std::string WebUiServer::build_index_html() {
            "    function renderProfilesTable() {\n"
            "      const body = document.getElementById('profilesBody');\n"
            "      if (!Array.isArray(latestProfiles) || latestProfiles.length === 0) {\n"
-           "        body.innerHTML = '<tr><td colspan=\"4\">Ingen profiler</td></tr>';\n"
+           "        body.innerHTML = '<tr><td colspan=\"5\">Ingen profiler</td></tr>';\n"
            "        return;\n"
            "      }\n"
            "      const active = activeProfiles();\n"
@@ -1553,6 +1633,7 @@ std::string WebUiServer::build_index_html() {
            "            <td>${escapeHtml(p.name)}${badges ? ' ' + badges : ''}</td>\n"
            "            <td>${escapeHtml(p.min_humidity_air)} / ${escapeHtml(p.max_humidity_air)}</td>\n"
            "            <td>${escapeHtml(p.min_humidity_soil)} / ${escapeHtml(p.max_humidity_soil)}</td>\n"
+           "            <td>${escapeHtml(p.min_temp_c ?? '')} / ${escapeHtml(p.max_temp_c ?? '')}</td>\n"
            "            <td>\n"
            "              <button class=\"${toggleClass}\" onclick=\"toggleProfile('${encodeURIComponent(p.name)}')\">${toggleLabel}</button>\n"
            "              <button class=\"btn-edit\" onclick=\"editProfile('${encodeURIComponent(p.name)}')\">Redigér</button>\n"
@@ -1571,6 +1652,8 @@ std::string WebUiServer::build_index_html() {
            "      document.getElementById('p_max_air').value = String(p.max_humidity_air ?? '');\n"
            "      document.getElementById('p_min_soil').value = String(p.min_humidity_soil ?? '');\n"
            "      document.getElementById('p_max_soil').value = String(p.max_humidity_soil ?? '');\n"
+           "      document.getElementById('p_min_temp').value = String(p.min_temp_c ?? '');\n"
+           "      document.getElementById('p_max_temp').value = String(p.max_temp_c ?? '');\n"
            "      document.getElementById('profileEditHint').textContent = 'Redigerer denne profil. Samme navn = opdater tal. Nyt navn = den gamle profil slettes og erstattes; aktiv konfiguration opdateres automatisk hvis den brugte det gamle navn.';\n"
            "      updateProfileCancelVisibility();\n"
            "      updateProfileFormValidation();\n"
@@ -1582,6 +1665,8 @@ std::string WebUiServer::build_index_html() {
            "      document.getElementById('p_max_air').value = '';\n"
            "      document.getElementById('p_min_soil').value = '';\n"
            "      document.getElementById('p_max_soil').value = '';\n"
+           "      document.getElementById('p_min_temp').value = '';\n"
+           "      document.getElementById('p_max_temp').value = '';\n"
            "      document.getElementById('profileEditHint').textContent = '';\n"
            "      updateProfileCancelVisibility();\n"
            "      updateProfileFormValidation();\n"
@@ -1594,15 +1679,17 @@ std::string WebUiServer::build_index_html() {
            "      document.getElementById('pb_label').value = String(current.label || '');\n"
            "      document.getElementById('pb_slot').value = String(current.slot || 1);\n"
            "      document.getElementById('pb_active').value = current.is_active ? '1' : '0';\n"
-           "      document.getElementById('pb_min_soil').value = String((current.min_soil_pct ?? 35));\n"
-           "      document.getElementById('pb_max_soil').value = String((current.max_soil_pct ?? 100));\n"
-           "      document.getElementById('pb_pump_duration').value = String((current.pump_duration_sec ?? 1));\n"
-           "      document.getElementById('pb_hysteresis').value = String((current.hysteresis_sec ?? 600));\n"
+           "      const minSoil = current.min_soil_pct;\n"
+           "      document.getElementById('pb_min_soil').value =\n"
+           "        (minSoil != null && minSoil >= 0) ? String(minSoil) : '';\n"
+           "      const hyst = current.hysteresis_sec;\n"
+           "      document.getElementById('pb_hysteresis').value =\n"
+           "        (hyst != null && hyst >= 0) ? String(hyst) : '';\n"
            "    }\n"
            "    function renderPlantBoxesTable() {\n"
            "      const body = document.getElementById('plantBoxesBody');\n"
            "      if (!Array.isArray(latestPlantBoxes) || latestPlantBoxes.length === 0) {\n"
-           "        body.innerHTML = '<tr><td colspan=\"9\">Ingen plantekasser</td></tr>';\n"
+           "        body.innerHTML = '<tr><td colspan=\"7\">Ingen plantekasser</td></tr>';\n"
            "        return;\n"
            "      }\n"
            "      body.innerHTML = latestPlantBoxes.map(pb => `\n"
@@ -1610,10 +1697,8 @@ std::string WebUiServer::build_index_html() {
            "          <td>${escapeHtml(pb.id)}</td>\n"
            "          <td>${escapeHtml(pb.label)}</td>\n"
            "          <td>${escapeHtml(pb.slot)}</td>\n"
-           "          <td>${escapeHtml(pb.min_soil_pct)}</td>\n"
-           "          <td>${escapeHtml(pb.max_soil_pct)}</td>\n"
-           "          <td>${escapeHtml(pb.pump_duration_sec)}</td>\n"
-           "          <td>${escapeHtml(pb.hysteresis_sec)}</td>\n"
+           "          <td>${pb.min_soil_pct != null && pb.min_soil_pct >= 0 ? escapeHtml(pb.min_soil_pct) : '—'}</td>\n"
+           "          <td>${pb.hysteresis_sec != null && pb.hysteresis_sec >= 0 ? escapeHtml(pb.hysteresis_sec) : '—'}</td>\n"
            "          <td>${pb.is_active ? '<span class=\\\"pill ok\\\">ja</span>' : '<span class=\\\"pill warn\\\">nej</span>'}</td>\n"
            "          <td>\n"
            "            <button class=\"btn-edit\" onclick=\"editPlantBox('${encodeURIComponent(String(pb.id))}')\">Redigér</button>\n"
@@ -1646,6 +1731,33 @@ std::string WebUiServer::build_index_html() {
            "        renderConfigViews();\n"
            "      }\n"
            "    }\n"
+           "    function updateSystemToggleUi() {\n"
+           "      const ventOn = activeConfig && activeConfig.ventilation_enabled !== false;\n"
+           "      const waterOn = activeConfig && activeConfig.watering_enabled !== false;\n"
+           "      const ventEl = document.getElementById('ventToggleState');\n"
+           "      const waterEl = document.getElementById('waterToggleState');\n"
+           "      if (ventEl) ventEl.textContent = ventOn ? 'til (gemt)' : 'fra (gemt)';\n"
+           "      if (waterEl) waterEl.textContent = waterOn ? 'til (gemt)' : 'fra (gemt)';\n"
+           "      const styleOn = (on) => on ? 'font-weight:600' : 'opacity:0.55';\n"
+           "      const bvo = document.getElementById('btnVentOn');\n"
+           "      const bvf = document.getElementById('btnVentOff');\n"
+           "      const bwo = document.getElementById('btnWaterOn');\n"
+           "      const bwf = document.getElementById('btnWaterOff');\n"
+           "      if (bvo) bvo.style.cssText = styleOn(ventOn);\n"
+           "      if (bvf) bvf.style.cssText = styleOn(!ventOn);\n"
+           "      if (bwo) bwo.style.cssText = styleOn(waterOn);\n"
+           "      if (bwf) bwf.style.cssText = styleOn(!waterOn);\n"
+           "    }\n"
+           "    async function setSystemEnabled(which, enabled) {\n"
+           "      const key = which === 'ventilation' ? 'ventilation_enabled' : 'watering_enabled';\n"
+           "      const val = enabled ? '1' : '0';\n"
+           "      const result = await sendControl(`/api/config?${key}=${val}`);\n"
+           "      if (result?.ok) {\n"
+           "        await loadConfig();\n"
+           "      } else if (result?.error) {\n"
+           "        alert(result.error);\n"
+           "      }\n"
+           "    }\n"
            "    async function loadConfig() {\n"
            "      try {\n"
            "        const res = await fetch('/api/config');\n"
@@ -1653,6 +1765,7 @@ std::string WebUiServer::build_index_html() {
            "        if (!draftDirty) {\n"
            "          syncDraftFromActive();\n"
            "        }\n"
+           "        updateSystemToggleUi();\n"
            "        renderConfigViews();\n"
            "      } catch (e) {\n"
            "        const err = 'Konfiguration utilgængelig: ' + e;\n"
@@ -1670,7 +1783,7 @@ std::string WebUiServer::build_index_html() {
            "        renderConfigViews();\n"
            "        updateProfileFormValidation();\n"
            "      } catch (e) {\n"
-           "        document.getElementById('profilesBody').innerHTML = '<tr><td colspan=\"4\">Profiler utilgængelige: ' + e + '</td></tr>';\n"
+           "        document.getElementById('profilesBody').innerHTML = '<tr><td colspan=\"5\">Profiler utilgængelige: ' + e + '</td></tr>';\n"
            "      }\n"
            "    }\n"
            "    async function loadPlantBoxes() {\n"
@@ -1716,7 +1829,9 @@ std::string WebUiServer::build_index_html() {
            "      const max_air = encodeURIComponent(profileHumidityForApi(document.getElementById('p_max_air').value));\n"
            "      const min_soil = encodeURIComponent(profileHumidityForApi(document.getElementById('p_min_soil').value));\n"
            "      const max_soil = encodeURIComponent(profileHumidityForApi(document.getElementById('p_max_soil').value));\n"
-           "      let url = `/api/profiles/upsert?name=${name}&min_air=${min_air}&max_air=${max_air}&min_soil=${min_soil}&max_soil=${max_soil}&interval=60`;\n"
+           "      const min_temp = encodeURIComponent(profileTempForApi(document.getElementById('p_min_temp').value));\n"
+           "      const max_temp = encodeURIComponent(profileTempForApi(document.getElementById('p_max_temp').value));\n"
+           "      let url = `/api/profiles/upsert?name=${name}&min_air=${min_air}&max_air=${max_air}&min_soil=${min_soil}&max_soil=${max_soil}&min_temp=${min_temp}&max_temp=${max_temp}&interval=60`;\n"
            "      if (profileEditFrom) {\n"
            "        url += `&replace_from=${encodeURIComponent(profileEditFrom)}`;\n"
            "      }\n"
@@ -1764,10 +1879,14 @@ std::string WebUiServer::build_index_html() {
            "      parts.push(`label=${encodeURIComponent(label)}`);\n"
            "      parts.push(`slot=${encodeURIComponent(slot || '1')}`);\n"
            "      parts.push(`is_active=${encodeURIComponent(isActive)}`);\n"
-           "      parts.push(`min_soil_pct=${encodeURIComponent(document.getElementById('pb_min_soil').value.trim() || '35')}`);\n"
-           "      parts.push(`max_soil_pct=${encodeURIComponent(document.getElementById('pb_max_soil').value.trim() || '100')}`);\n"
-           "      parts.push(`pump_duration_sec=${encodeURIComponent(document.getElementById('pb_pump_duration').value.trim() || '1')}`);\n"
-           "      parts.push(`hysteresis_sec=${encodeURIComponent(document.getElementById('pb_hysteresis').value.trim() || '600')}`);\n"
+           "      const minSoilRaw = document.getElementById('pb_min_soil').value.trim();\n"
+           "      const hystRaw = document.getElementById('pb_hysteresis').value.trim();\n"
+           "      if (!minSoilRaw || !hystRaw) {\n"
+           "        alert('Udfyld minimum jordfugtighed (%) og pause mellem vandinger (sek.). Ufuldstændige profiler gemmes ikke og sendes ikke til Pi. Vandmængde: fast ~25 ml pr. vanding (1 s i feltet) — planlæg pause og tør-grænse efter kasse og pumpe.');\n"
+           "        return;\n"
+           "      }\n"
+           "      parts.push(`min_soil_pct=${encodeURIComponent(minSoilRaw)}`);\n"
+           "      parts.push(`hysteresis_sec=${encodeURIComponent(hystRaw)}`);\n"
            "      const result = await sendControl(`/api/plant-boxes/upsert?${parts.join('&')}`);\n"
            "      if (!result) {\n"
            "        return;\n"
@@ -1780,11 +1899,9 @@ std::string WebUiServer::build_index_html() {
            "      document.getElementById('pb_id').value = '';\n"
            "      document.getElementById('pb_label').value = '';\n"
            "      document.getElementById('pb_slot').value = '1';\n"
-           "      document.getElementById('pb_active').value = '1';\n"
-           "      document.getElementById('pb_min_soil').value = '35';\n"
-           "      document.getElementById('pb_max_soil').value = '100';\n"
-           "      document.getElementById('pb_pump_duration').value = '1';\n"
-           "      document.getElementById('pb_hysteresis').value = '600';\n"
+           "      document.getElementById('pb_active').value = '0';\n"
+           "      document.getElementById('pb_min_soil').value = '';\n"
+           "      document.getElementById('pb_hysteresis').value = '';\n"
            "      await loadPlantBoxes();\n"
            "    }\n"
            "    async function deletePlantBox(encodedId) {\n"

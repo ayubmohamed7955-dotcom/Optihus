@@ -13,15 +13,22 @@ namespace {
 
 constexpr int kFileFormatVersion = 2;
 
+std::filesystem::path default_state_directory() {
+#if defined(_WIN32)
+    return std::filesystem::current_path() / "optihus_state";
+#else
+    if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
+        return std::filesystem::path(home) / ".local" / "share" / "optihus";
+    }
+    return std::filesystem::current_path() / "optihus_state";
+#endif
+}
+
 std::filesystem::path state_directory() {
     if (const char* env = std::getenv("OPTIHUS_STATE_DIR")) {
         return std::filesystem::path(env);
     }
-#if defined(_WIN32)
-    return std::filesystem::current_path() / "optihus_state";
-#else
-    return std::filesystem::path("/var/lib/optihus");
-#endif
+    return default_state_directory();
 }
 
 std::filesystem::path state_file_path() {

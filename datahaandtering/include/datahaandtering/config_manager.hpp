@@ -16,6 +16,8 @@ public:
     void set_profile_name(const std::string& profile_name);
     void set_interval_sec(int interval_sec);
     void set_emergency_stop(bool emergency_stop);
+    void set_ventilation_enabled(bool enabled);
+    void set_watering_enabled(bool enabled);
 
 private:
     DatabaseManager& db_manager_;
