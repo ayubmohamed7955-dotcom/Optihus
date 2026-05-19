@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -192,6 +193,8 @@ void ControlManager::apply_inbound_message(
         }
 
         runtime.server_config_received.store(true);
+        runtime.ventilation_enabled.store(p.value("ventilation_enabled", true));
+        runtime.watering_enabled.store(p.value("watering_enabled", true));
 
         const bool em = p.value("emergency_stop", false);
         runtime.emergency_halt.store(em);
@@ -226,12 +229,18 @@ void ControlManager::apply_inbound_message(
 #endif
 
 #if OPTIHUS_MILJOESTYRING_HARDWARE
-        const bool allow_motion = !em;
+        const bool allow_ventilation_motion =
+            !em && runtime.ventilation_enabled.load(std::memory_order_relaxed);
+        const bool allow_watering_motion =
+            !em
+            && runtime.watering_enabled.load(std::memory_order_relaxed)
+            && plant_water.mode == PlantWateringMode::SingleActiveProfile;
+        runtime.watering_actuation_allowed.store(allow_watering_motion, std::memory_order_relaxed);
         if (motor != nullptr) {
-            motor->setActuationEnabled(allow_motion);
+            motor->setActuationEnabled(allow_ventilation_motion);
         }
         if (plant_box != nullptr) {
-            plant_box->setActuationEnabled(allow_motion);
+            plant_box->setActuationEnabled(allow_watering_motion);
         }
 #endif
 
@@ -260,12 +269,63 @@ void ControlManager::apply_inbound_message(
         runtime.emergency_halt.store(false);
 #if OPTIHUS_MILJOESTYRING_HARDWARE
         if (runtime.server_config_received.load() && motor != nullptr && plant_box != nullptr) {
-            motor->setActuationEnabled(true);
-            plant_box->setActuationEnabled(true);
+            const bool allow_ventilation_motion = runtime.ventilation_enabled.load(std::memory_order_relaxed);
+            const bool allow_watering_motion = runtime.watering_actuation_allowed.load(std::memory_order_relaxed);
+            motor->setActuationEnabled(allow_ventilation_motion);
+            plant_box->setActuationEnabled(allow_watering_motion);
         }
 #endif
         (void)persist_field_config_emergency_overlay(false);
         log_info("control_manager", "Cleared emergency stop");
+        return;
+    }
+
+    if (cmd->action == "manual_test_motor") {
+        const bool systems_disabled =
+            !runtime.ventilation_enabled.load(std::memory_order_relaxed)
+            && !runtime.watering_enabled.load(std::memory_order_relaxed);
+        if (!systems_disabled || runtime.emergency_halt.load(std::memory_order_relaxed)) {
+            log_warn("control_manager", "Rejected manual motor test: system toggles not both disabled or emergency stop active");
+            return;
+        }
+#if OPTIHUS_MILJOESTYRING_HARDWARE
+        if (motor == nullptr) {
+            log_warn("control_manager", "Manual motor test ignored: motor hardware unavailable");
+            return;
+        }
+        if (motor->isWindowOpen()) {
+            motor->close();
+            log_info("control_manager", "Manual motor test: closed window");
+        } else {
+            motor->open();
+            log_info("control_manager", "Manual motor test: opened window");
+        }
+#else
+        (void)motor;
+        log_info("control_manager", "Manual motor test ignored in stub hardware mode");
+#endif
+        return;
+    }
+
+    if (cmd->action == "manual_test_pump") {
+        const bool systems_disabled =
+            !runtime.ventilation_enabled.load(std::memory_order_relaxed)
+            && !runtime.watering_enabled.load(std::memory_order_relaxed);
+        if (!systems_disabled || runtime.emergency_halt.load(std::memory_order_relaxed)) {
+            log_warn("control_manager", "Rejected manual pump test: system toggles not both disabled or emergency stop active");
+            return;
+        }
+#if OPTIHUS_MILJOESTYRING_HARDWARE
+        if (plant_box == nullptr) {
+            log_warn("control_manager", "Manual pump test ignored: plant box hardware unavailable");
+            return;
+        }
+        plant_box->manualPumpPulseSec(1);
+        log_info("control_manager", "Manual pump test: pulse 1s");
+#else
+        (void)plant_box;
+        log_info("control_manager", "Manual pump test ignored in stub hardware mode");
+#endif
         return;
     }
 

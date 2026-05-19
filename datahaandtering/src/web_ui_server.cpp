@@ -468,6 +468,40 @@ bool WebUiServer::handle_control_request(
     std::string& content_type
 ) {
     content_type = "application/json; charset=utf-8";
+    if (request_line.rfind("POST /api/control/test-component", 0) == 0) {
+        const auto query = parse_query(request_line);
+        const auto component_it = query.find("component");
+        if (component_it == query.end() || component_it->second.empty()) {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"component required (pump or motor)\"}\n";
+            return true;
+        }
+        const auto cfg = config_manager_.current_config();
+        if (cfg.ventilation_enabled || cfg.watering_enabled) {
+            status_line = "HTTP/1.1 409 Conflict\r\n";
+            body =
+                "{\"error\":\"manual component test requires both ventilation and watering disabled in saved config\"}\n";
+            return true;
+        }
+        std::string action;
+        if (component_it->second == "pump") {
+            action = "manual_test_pump";
+        } else if (component_it->second == "motor") {
+            action = "manual_test_motor";
+        } else {
+            status_line = "HTTP/1.1 400 Bad Request\r\n";
+            body = "{\"error\":\"unknown component\"}\n";
+            return true;
+        }
+        const bool queued = command_dispatcher_.dispatch_manual_action(action, "pulse");
+        note_control_result(action, queued);
+        body = std::string("{\"ok\":true,\"action\":\"")
+            + action
+            + "\",\"queued\":"
+            + (queued ? "true" : "false")
+            + "}\n";
+        return true;
+    }
     if (request_line.rfind("POST /api/control/emergency-stop", 0) == 0) {
         const bool enabled = request_line.find("enabled=1") != std::string::npos
             || request_line.find("enabled=true") != std::string::npos;
@@ -907,16 +941,12 @@ bool WebUiServer::handle_plant_boxes_request(
         }
 
         const bool ok = db_manager_.upsert_plant_box(plant_box, now_utc_iso8601());
-        const bool queued = ok ? command_dispatcher_.dispatch_current_config() : false;
-        if (ok) {
-            note_control_result("set_config", queued);
-        }
         if (!ok) {
             body =
-                "{\"ok\":false,\"queued\":false,\"error\":\"plantekasse kunne ikke gemmes (fx findes "
+                "{\"ok\":false,\"error\":\"plantekasse kunne ikke gemmes (fx findes "
                 "allerede en aktiv profil; kun én ad gangen).\"}\n";
         } else {
-            body = std::string("{\"ok\":true,\"queued\":") + (queued ? "true" : "false") + "}\n";
+            body = "{\"ok\":true}\n";
         }
         return true;
     }
@@ -942,16 +972,12 @@ bool WebUiServer::handle_plant_boxes_request(
             return true;
         }
         const bool ok = db_manager_.set_plant_box_active(id, active, now_utc_iso8601());
-        const bool queued = ok ? command_dispatcher_.dispatch_current_config() : false;
-        if (ok) {
-            note_control_result("set_config", queued);
-        }
         if (!ok) {
             body =
-                "{\"ok\":false,\"queued\":false,\"error\":\"Kunne ikke ændre aktiv plantekasse (fx findes "
+                "{\"ok\":false,\"error\":\"Kunne ikke ændre aktiv plantekasse (fx findes "
                 "allerede en anden aktiv profil).\"}\n";
         } else {
-            body = std::string("{\"ok\":true,\"queued\":") + (queued ? "true" : "false") + "}\n";
+            body = "{\"ok\":true}\n";
         }
         return true;
     }
@@ -985,9 +1011,7 @@ bool WebUiServer::handle_plant_boxes_request(
             body = "{\"error\":\"unable to delete plant box (check id or minimum one box rule)\"}\n";
             return true;
         }
-        const bool queued = command_dispatcher_.dispatch_current_config();
-        note_control_result("set_config", queued);
-        body = std::string("{\"ok\":true,\"queued\":") + (queued ? "true" : "false") + "}\n";
+        body = "{\"ok\":true}\n";
         return true;
     }
     status_line = "HTTP/1.1 405 Method Not Allowed\r\n";
@@ -1251,6 +1275,17 @@ std::string WebUiServer::build_index_html() {
            "    @media (max-width: 960px) {\n"
            "      .drift-help-row { grid-template-columns: 1fr; }\n"
            "    }\n"
+           "    @media (max-width: 640px) {\n"
+           "      .row:not(.profile-form-row) > .field {\n"
+           "        min-width: 0;\n"
+           "        flex: 1 1 100%;\n"
+           "      }\n"
+           "      .row:not(.profile-form-row) > .field input,\n"
+           "      .row:not(.profile-form-row) > .field select {\n"
+           "        width: 100%;\n"
+           "        box-sizing: border-box;\n"
+           "      }\n"
+           "    }\n"
            "    .drift-subtitle { margin: 0 0 0.2rem 0; font-size: 1rem; font-weight: 700; color: #111827; }\n"
            "    .drift-lead { margin: 0 0 0.75rem 0; font-size: 0.82rem; color: #6b7280; line-height: 1.45; max-width: 52rem; }\n"
            "    .drift-status { padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid #e5e7eb; }\n"
@@ -1275,6 +1310,10 @@ std::string WebUiServer::build_index_html() {
            "    details.settings-help-details summary { cursor: pointer; font-weight: 700; font-size: 1.15rem; color: #14532d; user-select: none; list-style-position: inside; margin: 0.55rem 0; }\n"
            "    details.settings-help-details[open] summary { margin-bottom: 0.35rem; }\n"
            "    details.settings-help-details .info-panel { margin-top: 0.5rem; }\n"
+           "    details.component-test-details { margin-top: 0.45rem; border: 1px solid #d1d5db; background: #f9fafb; border-radius: 8px; padding: 0.2rem 0.65rem 0.55rem; }\n"
+           "    details.component-test-details summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; color: #374151; margin: 0.35rem 0; }\n"
+           "    .manual-test-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.3rem; }\n"
+           "    .manual-test-status { margin-top: 0.35rem; font-size: 0.8rem; color: #6b7280; }\n"
            "    .info-panel .help-block { margin: 0 0 0.85rem 0; }\n"
            "    .info-panel .help-block:last-child { margin-bottom: 0; }\n"
            "    .info-panel .help-block p { margin: 0.3rem 0 0; font-size: 0.82rem; color: #334155; line-height: 1.4; }\n"
@@ -1489,6 +1528,15 @@ std::string WebUiServer::build_index_html() {
            "            </div>\n"
            "          </div>\n"
            "        </details>\n"
+           "        <details class=\"component-test-details\">\n"
+           "          <summary>Test af komponenter</summary>\n"
+           "          <p class=\"hint\" style=\"margin:0;\">Manuel test tillades kun når både Ventilation og Vanding er slået fra og gemt.</p>\n"
+           "          <div class=\"manual-test-actions\">\n"
+           "            <button type=\"button\" id=\"btnManualTestPump\" class=\"secondary\" onclick=\"manualTestComponent('pump')\" disabled>Test vandpumpe (1 s)</button>\n"
+           "            <button type=\"button\" id=\"btnManualTestMotor\" class=\"secondary\" onclick=\"manualTestComponent('motor')\" disabled>Test ventilationsmotor</button>\n"
+           "          </div>\n"
+           "          <div id=\"manualTestHint\" class=\"manual-test-status\">Slå begge systemer fra og gem konfiguration for at aktivere manuelle tests.</div>\n"
+           "        </details>\n"
            "      </section>\n"
            "      </div>\n"
            "      <section class=\"card card-official\" style=\"grid-column: 1 / -1;\">\n"
@@ -1576,6 +1624,9 @@ std::string WebUiServer::build_index_html() {
            "    let latestServiceStatus = null;\n"
            "    const draftConfig = { profiles: [], activePlantBoxId: null, ventilation_enabled: true, watering_enabled: true };\n"
            "    let draftDirty = false;\n"
+           "    let profileBoundsDirty = false;\n"
+           "    let plantBoxBoundsDirty = false;\n"
+           "    let profileCompatibilityHint = '';\n"
            "    let profileEditFrom = null;\n"
            "    let plantBoxEditId = null;\n"
            "    const profileFormFieldIds = ['p_crop', 'p_min_air', 'p_max_air', 'p_min_temp', 'p_max_temp'];\n"
@@ -1850,7 +1901,55 @@ std::string WebUiServer::build_index_html() {
            "    function configDraftDiffers() {\n"
            "      return !profileSetsEqual(activeProfiles(), draftConfig.profiles)\n"
            "        || plantBoxSelectionDiffers()\n"
-           "        || systemTogglesDiffer();\n"
+           "        || systemTogglesDiffer()\n"
+           "        || profileBoundsDirty\n"
+           "        || plantBoxBoundsDirty;\n"
+           "    }\n"
+           "    function aggregateAirTempBounds(profileNames) {\n"
+           "      if (!Array.isArray(latestProfiles) || !profileNames || profileNames.length === 0) return null;\n"
+           "      const selected = profileNames.map(n => latestProfiles.find(p => p.name === n)).filter(Boolean);\n"
+           "      if (selected.length === 0) return null;\n"
+           "      let b = {\n"
+           "        min_air: selected[0].min_humidity_air,\n"
+           "        max_air: selected[0].max_humidity_air,\n"
+           "        min_temp: selected[0].min_temp_c,\n"
+           "        max_temp: selected[0].max_temp_c,\n"
+           "      };\n"
+           "      for (let i = 1; i < selected.length; i += 1) {\n"
+           "        const p = selected[i];\n"
+           "        b.min_air = Math.max(b.min_air, p.min_humidity_air);\n"
+           "        b.max_air = Math.min(b.max_air, p.max_humidity_air);\n"
+           "        b.min_temp = Math.max(b.min_temp, p.min_temp_c);\n"
+           "        b.max_temp = Math.min(b.max_temp, p.max_temp_c);\n"
+           "      }\n"
+           "      return b;\n"
+           "    }\n"
+           "    function airTempOverlapOk(profileNames) {\n"
+           "      const b = aggregateAirTempBounds(profileNames);\n"
+           "      if (!b) return true;\n"
+           "      return b.min_air <= b.max_air && b.min_temp <= b.max_temp;\n"
+           "    }\n"
+           "    function canSelectProfile(name) {\n"
+           "      return airTempOverlapOk(dedupe([...draftConfig.profiles, name]));\n"
+           "    }\n"
+           "    function systemsFullyDisabledForManualTest() {\n"
+           "      return !draftConfig.ventilation_enabled\n"
+           "        && !draftConfig.watering_enabled\n"
+           "        && !savedVentilationEnabled()\n"
+           "        && !savedWateringEnabled();\n"
+           "    }\n"
+           "    function updateManualTestUi() {\n"
+           "      const allow = systemsFullyDisabledForManualTest();\n"
+           "      const pumpBtn = document.getElementById('btnManualTestPump');\n"
+           "      const motorBtn = document.getElementById('btnManualTestMotor');\n"
+           "      const hint = document.getElementById('manualTestHint');\n"
+           "      if (pumpBtn) pumpBtn.disabled = !allow;\n"
+           "      if (motorBtn) motorBtn.disabled = !allow;\n"
+           "      if (hint) {\n"
+           "        hint.textContent = allow\n"
+           "          ? 'Manuel test er aktiv. Brug knapperne til kort test af pumpe eller motor.'\n"
+           "          : 'Slå begge systemer fra og gem konfiguration for at aktivere manuelle tests.';\n"
+           "      }\n"
            "    }\n"
            "    function aggregateProfileBounds(profileNames) {\n"
            "      if (!Array.isArray(latestProfiles) || !profileNames || profileNames.length === 0) return null;\n"
@@ -1956,6 +2055,7 @@ std::string WebUiServer::build_index_html() {
            "        ${sendLine}`;\n"
            "      const draft = draftConfig.profiles;\n"
            "      const draftDiffers = configDraftDiffers();\n"
+           "      const overlapOk = airTempOverlapOk(draftConfig.profiles);\n"
            "      const draftTag = draftDiffers\n"
            "        ? '<span class=\"pill pending\" style=\"margin-left:0.35rem;\">Afviger fra gemt</span>'\n"
            "        : '<span class=\"pill ok\" style=\"margin-left:0.35rem;\">Matcher gemt</span>';\n"
@@ -1964,15 +2064,22 @@ std::string WebUiServer::build_index_html() {
            "        ${formatBoundsLine(aggregateProfileBounds(draft), draftPlantBox(), draftConfig.watering_enabled, draftConfig.ventilation_enabled)}\n"
            "        <div class=\"kv\"><strong>Ventilation:</strong> ${draftConfig.ventilation_enabled ? 'til' : 'fra'} &nbsp; <strong>Vanding:</strong> ${draftConfig.watering_enabled ? 'til' : 'fra'}</div>\n"
            "        <div class=\"muted\" style=\"margin-top:0.45rem;font-size:0.82rem;\">Tryk <strong>Gem konfiguration</strong> for at skrive kladde til databasen og sætte <code>set_config</code> i kø (hvis klient er tilkoblet).</div>`;\n"
+           "      const reqParts = [];\n"
            "      if (draftConfig.profiles.length === 0) {\n"
-           "        requirement.textContent = 'Du skal vælge mindst én profil i Profiler-sektionen før konfigurationen kan gemmes og køre.';\n"
-           "      } else {\n"
-           "        requirement.textContent = '';\n"
+           "        reqParts.push('Du skal vælge mindst én profil i Profiler-sektionen før konfigurationen kan gemmes og køre.');\n"
            "      }\n"
+           "      if (!overlapOk) {\n"
+           "        reqParts.push('Valgte profiler overlapper ikke i LuftFugt/LuftTemp. Juster valget før Gem konfiguration.');\n"
+           "      }\n"
+           "      if (profileCompatibilityHint) {\n"
+           "        reqParts.push(profileCompatibilityHint);\n"
+           "      }\n"
+           "      requirement.textContent = reqParts.join(' ');\n"
            "      const btnSave = document.getElementById('btnSaveConfig');\n"
            "      if (btnSave) {\n"
-           "        btnSave.disabled = draftConfig.profiles.length === 0 || !configDraftDiffers();\n"
+           "        btnSave.disabled = draftConfig.profiles.length === 0 || !overlapOk || !configDraftDiffers();\n"
            "      }\n"
+           "      updateManualTestUi();\n"
            "      renderProfilesTable();\n"
            "    }\n"
            "    function toggleProfile(encodedName) {\n"
@@ -1980,8 +2087,15 @@ std::string WebUiServer::build_index_html() {
            "      const exists = draftConfig.profiles.includes(name);\n"
            "      if (exists) {\n"
            "        draftConfig.profiles = draftConfig.profiles.filter(p => p !== name);\n"
+           "        profileCompatibilityHint = '';\n"
            "      } else {\n"
+           "        if (!canSelectProfile(name)) {\n"
+           "          profileCompatibilityHint = `Kan ikke vælge profil \"${name}\": ingen overlap i LuftFugt/LuftTemp med nuværende valg.`;\n"
+           "          renderConfigViews();\n"
+           "          return;\n"
+           "        }\n"
            "        draftConfig.profiles = dedupe([...draftConfig.profiles, name]);\n"
+           "        profileCompatibilityHint = '';\n"
            "      }\n"
            "      draftDirty = true;\n"
            "      renderConfigViews();\n"
@@ -1995,17 +2109,21 @@ std::string WebUiServer::build_index_html() {
            "      const active = activeProfiles();\n"
            "      body.innerHTML = latestProfiles.map(p => {\n"
            "        const chosen = draftConfig.profiles.includes(p.name);\n"
+           "        const selectable = chosen || canSelectProfile(p.name);\n"
            "        const toggleLabel = chosen ? 'Fjern' : 'Vælg';\n"
            "        const toggleClass = chosen ? 'secondary' : '';\n"
+           "        const toggleDisabled = !chosen && !selectable\n"
+           "          ? 'disabled title=\"Ingen overlap i LuftFugt/LuftTemp med nuværende valg\" style=\"opacity:0.5;cursor:not-allowed\"'\n"
+           "          : '';\n"
            "        const inActive = active.includes(p.name);\n"
-           "        const badges = `${inActive ? '<span class=\\\"pill server\\\">Gemt</span> ' : ''}${chosen && !inActive ? '<span class=\\\"pill draft\\\">Kladde</span> ' : ''}`;\n"
+           "        const badges = `${inActive ? '<span class=\\\"pill server\\\">Gemt</span> ' : ''}${chosen && !inActive ? '<span class=\\\"pill draft\\\">Kladde</span> ' : ''}${(!chosen && !selectable) ? '<span class=\\\"pill warn\\\" style=\\\"margin-left:0.2rem;\\\">Ingen overlap</span> ' : ''}`;\n"
            "        return `\n"
            "          <tr>\n"
            "            <td>${escapeHtml(p.name)}${badges ? ' ' + badges : ''}</td>\n"
            "            <td>${escapeHtml(p.min_humidity_air)} / ${escapeHtml(p.max_humidity_air)}</td>\n"
            "            <td>${escapeHtml(p.min_temp_c ?? '')} / ${escapeHtml(p.max_temp_c ?? '')}</td>\n"
            "            <td>\n"
-           "              <button class=\"${toggleClass}\" onclick=\"toggleProfile('${encodeURIComponent(p.name)}')\">${toggleLabel}</button>\n"
+           "              <button class=\"${toggleClass}\" onclick=\"toggleProfile('${encodeURIComponent(p.name)}')\" ${toggleDisabled}>${toggleLabel}</button>\n"
            "              <button class=\"btn-edit\" onclick=\"editProfile('${encodeURIComponent(p.name)}')\">Redigér</button>\n"
            "              <button class=\"danger\" onclick=\"deleteProfile('${encodeURIComponent(p.name)}')\" ${p.is_default ? 'disabled title=\"Standardprofiler kan ikke slettes\" style=\"opacity:0.5;cursor:not-allowed\"' : ''}>Slet</button>\n"
            "            </td>\n"
@@ -2140,10 +2258,13 @@ std::string WebUiServer::build_index_html() {
            "      const waterEl = document.getElementById('waterToggleState');\n"
            "      const toggleLabel = (on, saved) => {\n"
            "        const base = on ? 'til' : 'fra';\n"
-           "        return on === saved ? `${base} (gemt)` : `${base} (kladde)`;\n"
+           "        const tag = on === saved\n"
+           "          ? '<span class=\"pill server\" style=\"margin-left:0.2rem;\">Gemt</span>'\n"
+           "          : '<span class=\"pill draft\" style=\"margin-left:0.2rem;\">Kladde</span>';\n"
+           "        return `${base} ${tag}`;\n"
            "      };\n"
-           "      if (ventEl) ventEl.textContent = toggleLabel(ventOn, ventSaved);\n"
-           "      if (waterEl) waterEl.textContent = toggleLabel(waterOn, waterSaved);\n"
+           "      if (ventEl) ventEl.innerHTML = toggleLabel(ventOn, ventSaved);\n"
+           "      if (waterEl) waterEl.innerHTML = toggleLabel(waterOn, waterSaved);\n"
            "      const setToggleBtn = (el, selected) => {\n"
            "        if (!el) return;\n"
            "        el.classList.toggle('is-selected', selected);\n"
@@ -2251,6 +2372,8 @@ std::string WebUiServer::build_index_html() {
            "      }\n"
            "      const plantOk = await applyPlantBoxDraft();\n"
            "      if (plantOk) {\n"
+           "        profileBoundsDirty = false;\n"
+           "        plantBoxBoundsDirty = false;\n"
            "        draftDirty = false;\n"
            "      }\n"
            "      await loadPlantBoxes();\n"
@@ -2270,6 +2393,7 @@ std::string WebUiServer::build_index_html() {
            "      const min_temp = encodeURIComponent(profileTempForApi(document.getElementById('p_min_temp').value));\n"
            "      const max_temp = encodeURIComponent(profileTempForApi(document.getElementById('p_max_temp').value));\n"
            "      let url = `/api/profiles/upsert?name=${name}&min_air=${min_air}&max_air=${max_air}&min_soil=${min_soil}&max_soil=${max_soil}&min_temp=${min_temp}&max_temp=${max_temp}&interval=60`;\n"
+           "      const editedFrom = profileEditFrom;\n"
            "      if (profileEditFrom) {\n"
            "        url += `&replace_from=${encodeURIComponent(profileEditFrom)}`;\n"
            "      }\n"
@@ -2279,9 +2403,19 @@ std::string WebUiServer::build_index_html() {
            "        alert(result.error ? `Kunne ikke gemme profil: ${result.error}` : 'Kunne ikke gemme profil.');\n"
            "        return;\n"
            "      }\n"
-           "      if (profileEditFrom && profileEditFrom !== cropRaw && result.ok) {\n"
-           "        draftConfig.profiles = draftConfig.profiles.map(n => (n === profileEditFrom ? cropRaw : n));\n"
+           "      if (editedFrom && editedFrom !== cropRaw && result.ok) {\n"
+           "        draftConfig.profiles = draftConfig.profiles.map(n => (n === editedFrom ? cropRaw : n));\n"
            "        draftDirty = true;\n"
+           "      }\n"
+           "      if (result.ok) {\n"
+           "        const active = activeProfiles();\n"
+           "        const touchesSelectedProfile = draftConfig.profiles.includes(cropRaw)\n"
+           "          || (editedFrom ? draftConfig.profiles.includes(editedFrom) : false)\n"
+           "          || active.includes(cropRaw)\n"
+           "          || (editedFrom ? active.includes(editedFrom) : false);\n"
+           "        if (touchesSelectedProfile) {\n"
+           "          profileBoundsDirty = true;\n"
+           "        }\n"
            "      }\n"
            "      profileEditFrom = null;\n"
            "      if (result.replaced_profile) {\n"
@@ -2308,8 +2442,20 @@ std::string WebUiServer::build_index_html() {
            "        await loadPlantBoxes();\n"
            "        return;\n"
            "      }\n"
+           "      plantBoxBoundsDirty = true;\n"
            "      resetPlantBoxForm();\n"
            "      await loadPlantBoxes();\n"
+           "    }\n"
+           "    async function manualTestComponent(component) {\n"
+           "      if (!systemsFullyDisabledForManualTest()) {\n"
+           "        alert('Slå både Ventilation og Vanding fra, og gem konfiguration først.');\n"
+           "        return;\n"
+           "      }\n"
+           "      const result = await sendControl(`/api/control/test-component?component=${encodeURIComponent(component)}`);\n"
+           "      if (!result) return;\n"
+           "      if (result.http_ok === false || result.ok === false) {\n"
+           "        alert(result.error || 'Kunne ikke starte manuel test.');\n"
+           "      }\n"
            "    }\n"
            "    async function deletePlantBox(encodedId) {\n"
            "      const id = decodeURIComponent(encodedId);\n"
@@ -2328,6 +2474,7 @@ std::string WebUiServer::build_index_html() {
            "        draftConfig.activePlantBoxId = null;\n"
            "        draftDirty = true;\n"
            "      }\n"
+           "      plantBoxBoundsDirty = true;\n"
            "      await loadPlantBoxes();\n"
            "    }\n"
            "    async function sendControl(url) {\n"

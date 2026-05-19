@@ -9,6 +9,7 @@
 
 #include <array>
 #include <csignal>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -66,7 +67,12 @@ int main(int argc, char** argv) {
         TuiManager tui(db_manager, config_manager);
         return tui.run();
     }
-    const auto ensure_default_profiles = [&db_manager]() {
+    const auto reset_profiles_to_defaults = [&db_manager]() {
+        for (const auto& profile : db_manager.list_profiles()) {
+            if (!profile.is_default) {
+                db_manager.delete_profile(profile.name);
+            }
+        }
         const auto now = now_utc_iso8601();
         const std::array<Profile, 3> defaults {
             Profile {"tomato", 55.0, 75.0, 35.0, 60.0, 18.0, 26.0, 60, true},
@@ -77,28 +83,27 @@ int main(int argc, char** argv) {
             db_manager.upsert_profile(profile, now);
         }
     };
-    ensure_default_profiles();
-    const auto ensure_default_plant_box = [&db_manager]() {
-        const auto now = now_utc_iso8601();
-        const auto boxes = db_manager.list_plant_boxes();
-        for (const auto& existing : boxes) {
-            if (existing.is_default) {
-                return;
+
+    const auto reset_plant_boxes_to_defaults = [&db_manager]() {
+        for (const auto& box : db_manager.list_plant_boxes()) {
+            if (!box.is_default) {
+                db_manager.delete_plant_box(box.id);
             }
         }
+
+        const auto now = now_utc_iso8601();
+        const auto boxes = db_manager.list_plant_boxes();
+        std::optional<PlantBoxConfig> existing_default;
         for (const auto& existing : boxes) {
-            if (existing.label == kDefaultPlantBoxLabel && existing.slot == 1) {
-                PlantBoxConfig box = existing;
-                box.is_default = true;
-                if (!plant_box_watering_params_configured(existing)) {
-                    box.min_soil_pct = kDefaultPlantMinSoilPct;
-                    box.hysteresis_sec = kDefaultPlantHysteresisSec;
-                }
-                db_manager.upsert_plant_box(box, now);
-                return;
+            if (existing.is_default) {
+                existing_default = existing;
+                break;
             }
         }
         PlantBoxConfig box;
+        if (existing_default.has_value()) {
+            box.id = existing_default->id;
+        }
         box.label = kDefaultPlantBoxLabel;
         box.slot = 1;
         box.is_active = false;
@@ -109,8 +114,14 @@ int main(int argc, char** argv) {
         box.hysteresis_sec = kDefaultPlantHysteresisSec;
         db_manager.upsert_plant_box(box, now);
     };
-    ensure_default_plant_box();
+
+    reset_profiles_to_defaults();
+    reset_plant_boxes_to_defaults();
     config_manager.load_active_config();
+    config_manager.set_profile_name("tomato");
+    config_manager.set_interval_sec(60);
+    config_manager.set_emergency_stop(false);
+    config_manager.save_active_config();
 
     ThreadSafeQueue<MessageEnvelope> inbound_queue;
     ThreadSafeQueue<MessageEnvelope> outbound_queue;

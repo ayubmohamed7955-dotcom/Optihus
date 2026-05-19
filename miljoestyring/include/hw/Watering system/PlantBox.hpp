@@ -43,6 +43,7 @@ public:
     void setPauseBetweenWateringSec(int value);
     float getCurrentAverageMoisture();
     bool isPumpOn() const { return pumpOn_.load(); }
+    void manualPumpPulseSec(int seconds);
 
     /** false ved levering: jordfugt opdateres stadig; pumpe først når Optihus sætter true efter server-konfiguration. */
     void setActuationEnabled(bool enabled);

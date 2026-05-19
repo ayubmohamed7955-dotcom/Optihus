@@ -142,6 +142,21 @@ void PlantBox::setActuationEnabled(bool enabled) {
     }
 }
 
+void PlantBox::manualPumpPulseSec(int seconds) {
+    int pulse = seconds;
+    if (pulse < 1) {
+        pulse = 1;
+    }
+    if (pulse > 10) {
+        pulse = 10;
+    }
+    printf("Box %d | Manual pump pulse ON (%d s)\n", boxId, pulse);
+    setPumpState(true);
+    std::this_thread::sleep_for(std::chrono::seconds(pulse));
+    setPumpState(false);
+    printf("Box %d | Manual pump pulse OFF\n", boxId);
+}
+
 void PlantBox::monitorLoop() {
     setPumpState(false);
 
