@@ -68,11 +68,12 @@ CREATE TABLE IF NOT EXISTS plant_boxes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
     slot INTEGER NOT NULL UNIQUE,
-    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    min_soil_pct REAL NOT NULL DEFAULT -1,
+    is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    min_soil_pct REAL NOT NULL DEFAULT 20,
     max_soil_pct REAL NOT NULL DEFAULT 100,
     pump_duration_sec INTEGER NOT NULL DEFAULT 1,
-    hysteresis_sec INTEGER NOT NULL DEFAULT -1,
+    hysteresis_sec INTEGER NOT NULL DEFAULT 30,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -83,6 +84,9 @@ INSERT INTO active_config (id, timestamp, mode, profile_name, interval_sec, emer
 SELECT 1, '1970-01-01T00:00:00Z', 'auto', 'tomato', 60, 0
 WHERE NOT EXISTS (SELECT 1 FROM active_config WHERE id = 1);
 
-INSERT INTO plant_boxes (label, slot, is_active, created_at, updated_at)
-SELECT 'Plantekasse 1', 1, 0, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
+INSERT INTO plant_boxes (
+    label, slot, is_active, is_default, min_soil_pct, max_soil_pct, pump_duration_sec,
+    hysteresis_sec, created_at, updated_at
+)
+SELECT 'Plantekasse 1', 1, 0, 1, 20, 100, 1, 30, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
 WHERE NOT EXISTS (SELECT 1 FROM plant_boxes);

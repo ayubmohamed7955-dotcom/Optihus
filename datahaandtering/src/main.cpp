@@ -15,6 +15,7 @@
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
 #include "shared/message.hpp"
+#include "shared/paths.hpp"
 #include "shared/thread_safe_queue.hpp"
 #include "shared/time_utils.hpp"
 
@@ -28,14 +29,34 @@ static void handle_signal(int /*signal_number*/) {
 
 int main(int argc, char** argv) {
     bool tui_mode = false;
-    if (argc > 1) {
-        const std::string_view arg1 = argv[1];
-        tui_mode = (arg1 == "--tui");
+    const char* db_cli = nullptr;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg == "--tui") {
+            tui_mode = true;
+        } else if (arg == "--db" && i + 1 < argc) {
+            db_cli = argv[++i];
+        }
     }
 
-    DatabaseManager db_manager{std::string{kDbPath}};
+    const std::string db_path = optihus::resolve_db_path(db_cli);
+    if (!optihus::ensure_parent_directories(db_path)) {
+        log_error("main", "Could not create database directory for " + db_path);
+        return 1;
+    }
+
+    DatabaseManager db_manager{db_path};
     if (!db_manager.open()) {
-        log_error("main", "Could not open database");
+        log_error("main", "Could not open database at " + db_path);
+        return 1;
+    }
+    log_info("main", "Database: " + db_path);
+
+    if (!db_manager.initialize_schema("sql/init.sql")) {
+        log_warn("main", "Could not run schema file. Assuming schema already exists.");
+    }
+    if (!db_manager.apply_schema_migrations()) {
+        log_error("main", "Could not apply database migrations");
         return 1;
     }
 
@@ -44,10 +65,6 @@ int main(int argc, char** argv) {
     if (tui_mode) {
         TuiManager tui(db_manager, config_manager);
         return tui.run();
-    }
-
-    if (!db_manager.initialize_schema("sql/init.sql")) {
-        log_warn("main", "Could not run schema file. Assuming schema already exists.");
     }
     const auto ensure_default_profiles = [&db_manager]() {
         const auto now = now_utc_iso8601();
@@ -61,6 +78,38 @@ int main(int argc, char** argv) {
         }
     };
     ensure_default_profiles();
+    const auto ensure_default_plant_box = [&db_manager]() {
+        const auto now = now_utc_iso8601();
+        const auto boxes = db_manager.list_plant_boxes();
+        for (const auto& existing : boxes) {
+            if (existing.is_default) {
+                return;
+            }
+        }
+        for (const auto& existing : boxes) {
+            if (existing.label == kDefaultPlantBoxLabel && existing.slot == 1) {
+                PlantBoxConfig box = existing;
+                box.is_default = true;
+                if (!plant_box_watering_params_configured(existing)) {
+                    box.min_soil_pct = kDefaultPlantMinSoilPct;
+                    box.hysteresis_sec = kDefaultPlantHysteresisSec;
+                }
+                db_manager.upsert_plant_box(box, now);
+                return;
+            }
+        }
+        PlantBoxConfig box;
+        box.label = kDefaultPlantBoxLabel;
+        box.slot = 1;
+        box.is_active = false;
+        box.is_default = true;
+        box.min_soil_pct = kDefaultPlantMinSoilPct;
+        box.max_soil_pct = 100.0;
+        box.pump_duration_sec = 1;
+        box.hysteresis_sec = kDefaultPlantHysteresisSec;
+        db_manager.upsert_plant_box(box, now);
+    };
+    ensure_default_plant_box();
     config_manager.load_active_config();
 
     ThreadSafeQueue<MessageEnvelope> inbound_queue;

@@ -39,16 +39,21 @@ struct ActiveConfig {
 inline constexpr double kPlantBoxUnsetMinSoilPct = -1.0;
 inline constexpr int kPlantBoxUnsetHysteresisSec = -1;
 
+inline constexpr const char* kDefaultPlantBoxLabel = "Plantekasse 1";
+inline constexpr double kDefaultPlantMinSoilPct = 20.0;
+inline constexpr int kDefaultPlantHysteresisSec = 30;
+
 /// Logical plantbox profile (persisted as `plant_boxes`; v1: soil/pump params for the active profile only on client).
 struct PlantBoxConfig {
     int id {0};
     std::string label;
     int slot {1};
-    bool is_active {true};
-    double min_soil_pct {kPlantBoxUnsetMinSoilPct};
+    bool is_active {false};
+    bool is_default {false};
+    double min_soil_pct {kDefaultPlantMinSoilPct};
     double max_soil_pct {100.0};
     int pump_duration_sec {1};
-    int hysteresis_sec {kPlantBoxUnsetHysteresisSec};
+    int hysteresis_sec {kDefaultPlantHysteresisSec};
 };
 
 inline bool plant_box_min_soil_configured(const PlantBoxConfig& box) {

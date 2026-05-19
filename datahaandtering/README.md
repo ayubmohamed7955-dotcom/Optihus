@@ -29,8 +29,23 @@ Denne mappe er server-delen af Optihus.
 ## Typisk kørsel (Pi)
 
 ```bash
+cd /path/to/Optihus
 ./build/datahaandtering/datahaandtering
 ```
+
+Database: `/opt/optihus/data/optihus.db` (eller `OPTIHUS_DB_PATH` / `--db`).
+
+## Web UI på Windows (lokal udvikling)
+
+Fra repo-roden:
+
+```powershell
+cmake -S . -B build-windows -DOPTIHUS_BUILD_DATAHAANDTERING=ON -DOPTIHUS_BUILD_MILJOESTYRING=OFF
+cmake --build build-windows --config Release
+.\build-windows\datahaandtering\Release\datahaandtering.exe
+```
+
+Åbn `http://127.0.0.1:8080/`. DB: `data/optihus.db` i repo. Se `vejledning/windows/build-windows-da.md`.
 
 Forventet log:
 

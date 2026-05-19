@@ -174,7 +174,6 @@ void TuiManager::create_profile() {
         std::cout << "Annulleret.\n";
         return;
     }
-
     std::cout << "Minimum luftfugtighed: ";
     std::cin >> profile.min_humidity_air;
     std::cout << "Maksimum luftfugtighed: ";

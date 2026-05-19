@@ -20,6 +20,8 @@ public:
     void close();
 
     bool initialize_schema(const std::string& init_sql_path);
+    /** Upgrades existing tables (call after initialize_schema on new databases). */
+    bool apply_schema_migrations();
     bool insert_telemetry(
         const std::string& timestamp_utc,
         const TelemetrySample& sample,
@@ -42,6 +44,7 @@ public:
     bool delete_profile(const std::string& profile_name);
     std::vector<Profile> list_profiles();
     bool upsert_plant_box(const PlantBoxConfig& plant_box, const std::string& timestamp_utc);
+    bool set_plant_box_active(int id, bool active, const std::string& timestamp_utc);
     bool delete_plant_box(int id);
     std::vector<PlantBoxConfig> list_plant_boxes();
 
@@ -55,6 +58,7 @@ public:
 private:
     bool exec_sql(const std::string& sql);
     bool ensure_plant_boxes_schema_locked();
+    bool apply_schema_migrations_locked();
 
     std::string db_path_;
     sqlite3* db_ {nullptr};
