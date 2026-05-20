@@ -1,32 +1,21 @@
 #include "datahaandtering/tcp_server.hpp"
 
+#include <cerrno>
+#include <cstring>
 #include <string>
 #include <utility>
 
-#if defined(_WIN32)
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <cerrno>
-#include <cstring>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#endif
 
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
 
-#if defined(_WIN32)
-static std::string last_socket_error() {
-    return std::to_string(WSAGetLastError());
-}
-#else
 static std::string last_socket_error() {
     return std::strerror(errno);
 }
-#endif
 
 TcpServer::TcpServer(
     int port,
@@ -44,37 +33,15 @@ bool TcpServer::start() {
         return false;
     }
 
-#if defined(_WIN32)
-    WSADATA wsa_data {};
-    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-        log_error("tcp_server", "WSAStartup failed");
-        running_ = false;
-        return false;
-    }
-#endif
-
     listen_socket_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket_ < 0) {
         log_error("tcp_server", "Failed to create socket: " + last_socket_error());
-#if defined(_WIN32)
-        WSACleanup();
-#endif
         running_ = false;
         return false;
     }
 
     int reuse = 1;
-#if defined(_WIN32)
-    setsockopt(
-        listen_socket_,
-        SOL_SOCKET,
-        SO_REUSEADDR,
-        reinterpret_cast<const char*>(&reuse),
-        sizeof(reuse)
-    );
-#else
     setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-#endif
 
     sockaddr_in server_addr {};
     server_addr.sin_family = AF_INET;
@@ -83,12 +50,7 @@ bool TcpServer::start() {
 
     if (bind(listen_socket_, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) < 0) {
         log_error("tcp_server", "bind failed: " + last_socket_error());
-#if defined(_WIN32)
-        closesocket(listen_socket_);
-        WSACleanup();
-#else
         close(listen_socket_);
-#endif
         listen_socket_ = -1;
         running_ = false;
         return false;
@@ -96,12 +58,7 @@ bool TcpServer::start() {
 
     if (listen(listen_socket_, 1) < 0) {
         log_error("tcp_server", "listen failed: " + last_socket_error());
-#if defined(_WIN32)
-        closesocket(listen_socket_);
-        WSACleanup();
-#else
         close(listen_socket_);
-#endif
         listen_socket_ = -1;
         running_ = false;
         return false;
@@ -122,13 +79,8 @@ void TcpServer::stop() {
     }
 
     if (listen_socket_ >= 0) {
-#if defined(_WIN32)
-        shutdown(listen_socket_, SD_BOTH);
-        closesocket(listen_socket_);
-#else
         shutdown(listen_socket_, SHUT_RDWR);
         close(listen_socket_);
-#endif
         listen_socket_ = -1;
     }
 
@@ -139,9 +91,6 @@ void TcpServer::stop() {
     stop_session();
 
     log_info("tcp_server", "Server stopped");
-#if defined(_WIN32)
-    WSACleanup();
-#endif
 }
 
 void TcpServer::accept_loop() {
@@ -199,14 +148,9 @@ void TcpServer::stop_session_locked() {
     }
 
     if (client_socket_ >= 0) {
-#if defined(_WIN32)
-        shutdown(client_socket_, SD_BOTH);
-#else
         shutdown(client_socket_, SHUT_RDWR);
-#endif
     }
 
-    // Wake write_loop if blocked in wait_pop.
     outbound_queue_.push(make_message(MessageType::Event, "datahaandtering"));
 
     if (read_thread_.joinable()) {
@@ -219,11 +163,7 @@ void TcpServer::stop_session_locked() {
     }
 
     if (client_socket_ >= 0) {
-#if defined(_WIN32)
-        closesocket(client_socket_);
-#else
         close(client_socket_);
-#endif
         client_socket_ = -1;
     }
 
@@ -237,7 +177,7 @@ void TcpServer::read_loop() {
     char chunk[1024];
 
     while (session_running_) {
-        const int n = recv(client_socket_, chunk, static_cast<int>(sizeof(chunk)), 0);
+        const ssize_t n = recv(client_socket_, chunk, sizeof(chunk), 0);
         if (n <= 0) {
             if (n == 0) {
                 log_info("tcp_server", "Client disconnected (recv=0)");
@@ -256,7 +196,6 @@ void TcpServer::read_loop() {
             if (line.empty()) {
                 continue;
             }
-
             const auto parsed = decode_json_line(line);
             if (!parsed.has_value()) {
                 log_warn("tcp_server", "Dropped invalid JSON line");
@@ -283,7 +222,7 @@ void TcpServer::write_loop() {
         const char* data = json_line.data();
         std::size_t remaining = json_line.size();
         while (remaining > 0 && session_running_) {
-            const int sent = send(client_socket_, data, static_cast<int>(remaining), 0);
+            const ssize_t sent = send(client_socket_, data, remaining, 0);
             if (sent <= 0) {
                 log_warn("tcp_server", "send failed: " + last_socket_error());
                 session_running_ = false;
@@ -295,4 +234,3 @@ void TcpServer::write_loop() {
     }
     log_info("tcp_server", "write_loop exited");
 }
-

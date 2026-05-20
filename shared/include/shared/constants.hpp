@@ -10,6 +10,8 @@ inline constexpr int kTcpPort = 5000;
 inline constexpr int kHttpUiPort = 8080;
 inline constexpr std::string_view kDbPath = "/opt/optihus/data/optihus.db";
 inline constexpr int kDefaultIntervalSec = 60;
+/** Rolling retention for telemetry rows in SQLite (UTC timestamps). */
+inline constexpr int kTelemetryRetentionDays = 365;
 inline constexpr int kHeartbeatIntervalSec = 10;
 inline constexpr int kReconnectDelaySec = 3;
 inline constexpr std::string_view kSourceDatahaandtering = "datahaandtering";

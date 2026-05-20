@@ -22,11 +22,15 @@ public:
     bool initialize_schema(const std::string& init_sql_path);
     /** Upgrades existing tables (call after initialize_schema on new databases). */
     bool apply_schema_migrations();
+    /** Factory profiles/plant box + aktiv config (begge systemer fra, ingen valgt profil). */
+    bool apply_factory_defaults();
     bool insert_telemetry(
         const std::string& timestamp_utc,
         const TelemetrySample& sample,
         const std::string& source
     );
+    /** Deletes telemetry rows with timestamp strictly older than `days` (UTC). Returns rows removed. */
+    int prune_telemetry_older_than_days(int days);
     bool insert_system_event(
         const std::string& timestamp_utc,
         const std::string& event_type,

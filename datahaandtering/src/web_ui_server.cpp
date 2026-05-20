@@ -14,38 +14,23 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#endif
 
 #include "shared/logger.hpp"
 #include "shared/types.hpp"
 #include "shared/time_utils.hpp"
 
-#if defined(_WIN32)
-static std::string last_socket_error() {
-    return std::to_string(WSAGetLastError());
-}
-#else
 static std::string last_socket_error() {
     return std::strerror(errno);
 }
-#endif
 
 static void close_socket(int socket_fd) {
-#if defined(_WIN32)
-    closesocket(socket_fd);
-#else
     close(socket_fd);
-#endif
 }
 
 static std::optional<bool> parse_bool_query(
@@ -292,37 +277,15 @@ bool WebUiServer::start() {
         return false;
     }
 
-#if defined(_WIN32)
-    WSADATA wsa_data {};
-    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-        log_error("web_ui", "WSAStartup failed");
-        running_ = false;
-        return false;
-    }
-#endif
-
     listen_socket_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket_ < 0) {
         log_error("web_ui", "Failed to create socket: " + last_socket_error());
-#if defined(_WIN32)
-        WSACleanup();
-#endif
         running_ = false;
         return false;
     }
 
     int reuse = 1;
-#if defined(_WIN32)
-    setsockopt(
-        listen_socket_,
-        SOL_SOCKET,
-        SO_REUSEADDR,
-        reinterpret_cast<const char*>(&reuse),
-        sizeof(reuse)
-    );
-#else
     setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-#endif
 
     sockaddr_in server_addr {};
     server_addr.sin_family = AF_INET;
@@ -333,9 +296,6 @@ bool WebUiServer::start() {
         log_error("web_ui", "bind failed: " + last_socket_error());
         close_socket(listen_socket_);
         listen_socket_ = -1;
-#if defined(_WIN32)
-        WSACleanup();
-#endif
         running_ = false;
         return false;
     }
@@ -344,9 +304,6 @@ bool WebUiServer::start() {
         log_error("web_ui", "listen failed: " + last_socket_error());
         close_socket(listen_socket_);
         listen_socket_ = -1;
-#if defined(_WIN32)
-        WSACleanup();
-#endif
         running_ = false;
         return false;
     }
@@ -362,11 +319,7 @@ void WebUiServer::stop() {
     }
 
     if (listen_socket_ >= 0) {
-#if defined(_WIN32)
-        shutdown(listen_socket_, SD_BOTH);
-#else
         shutdown(listen_socket_, SHUT_RDWR);
-#endif
         close_socket(listen_socket_);
         listen_socket_ = -1;
     }
@@ -375,9 +328,6 @@ void WebUiServer::stop() {
         accept_thread_.join();
     }
 
-#if defined(_WIN32)
-    WSACleanup();
-#endif
     log_info("web_ui", "Browser UI stopped");
 }
 
@@ -541,6 +491,21 @@ bool WebUiServer::handle_config_request(
         return true;
     }
 
+    if (request_line.rfind("POST /api/config/factory-reset", 0) == 0) {
+        if (!db_manager_.apply_factory_defaults()) {
+            status_line = "HTTP/1.1 500 Internal Server Error\r\n";
+            body = "{\"ok\":false,\"error\":\"factory reset failed\"}\n";
+            return true;
+        }
+        if (!config_manager_.load_active_config()) {
+            status_line = "HTTP/1.1 500 Internal Server Error\r\n";
+            body = "{\"ok\":false,\"error\":\"could not reload active config\"}\n";
+            return true;
+        }
+        body = "{\"ok\":true}\n";
+        return true;
+    }
+
     if (request_line.rfind("POST /api/config", 0) == 0) {
         const auto query = parse_query(request_line);
         bool changed = false;
@@ -605,14 +570,10 @@ bool WebUiServer::handle_config_request(
         if (changed) {
             config_manager_.set_interval_sec(60);
             const bool saved = config_manager_.save_active_config();
-            const bool queued = command_dispatcher_.dispatch_current_config();
-            note_control_result("set_config", queued);
             body = std::string("{\"ok\":")
                 + (saved ? "true" : "false")
                 + ",\"saved\":"
                 + (saved ? "true" : "false")
-                + ",\"queued\":"
-                + (queued ? "true" : "false")
                 + "}\n";
             return true;
         }
@@ -1497,8 +1458,8 @@ std::string WebUiServer::build_index_html() {
            "            </div>\n"
            "            <div class=\"help-block\">\n"
            "              <h3>Gem og send konfiguration</h3>\n"
-           "              <p><strong>Gem konfiguration</strong> skriver kladden til databasen og sætter <code>set_config</code> i send-køen (når klient er tilkoblet).</p>\n"
-           "              <p><strong>Send konfiguration</strong> lægger den <em>allerede gemte</em> aktive konfiguration i køen igen — uden at gemme kladde først. Brug det, hvis klienten missede sidste besked.</p>\n"
+           "              <p><strong>Gem konfiguration</strong> skriver kladden til databasen på Pi&nbsp;1 (ingen send til Pi&nbsp;2).</p>\n"
+           "              <p><strong>Send konfiguration</strong> sender den <em>allerede gemte</em> aktive konfiguration til Pi&nbsp;2 med det samme (når klient er tilkoblet).</p>\n"
            "              <p>Vælger du <strong>flere profiler</strong>, beregnes fælles grænser (højeste minimum, laveste maksimum). Overlapper grænserne ikke, afvises gem. Telemetri sendes med fast interval på <strong>60 sekunder</strong>.</p>\n"
            "            </div>\n"
            "            <div class=\"help-block\">\n"
@@ -1515,7 +1476,7 @@ std::string WebUiServer::build_index_html() {
            "            </div>\n"
            "            <div class=\"help-block\">\n"
            "              <h3>Drift, nødstop og Grafana</h3>\n"
-           "              <p><strong>Nødstop</strong> gemmes og sendes med det samme til Pi 2. <strong>Ventilation</strong> og <strong>vanding til/fra</strong> (øverst i hvert systemkort) er kladde, indtil du trykker <strong>Gem konfiguration</strong>.</p>\n"
+           "              <p><strong>Nødstop</strong> sendes med det samme til Pi&nbsp;2. <strong>Ventilation</strong> og <strong>vanding til/fra</strong> er kladde indtil <strong>Gem konfiguration</strong>; Pi&nbsp;2 får dem først ved <strong>Send konfiguration</strong>.</p>\n"
            "              <p><strong>Grafana</strong> åbner et read-only overblik i nyt vindue — ikke styring af anlægget herfra.</p>\n"
            "            </div>\n"
            "            <div class=\"help-block\">\n"
@@ -1545,6 +1506,7 @@ std::string WebUiServer::build_index_html() {
            "          <span class=\"section-tag\">Server</span>\n"
            "        </div>\n"
            "        <div class=\"row\" style=\"margin-top:0.55rem;\">\n"
+           "          <button type=\"button\" class=\"secondary\" onclick=\"resetConfigDraft()\">Nulstil til standard</button>\n"
            "          <button type=\"button\" id=\"btnSaveConfig\" disabled onclick=\"saveConfig()\">Gem konfiguration</button>\n"
            "          <button type=\"button\" onclick=\"sendControl('/api/control/sync-config')\">Send konfiguration</button>\n"
            "        </div>\n"
@@ -1623,6 +1585,7 @@ std::string WebUiServer::build_index_html() {
            "    let activeConfig = null;\n"
            "    let latestServiceStatus = null;\n"
            "    const draftConfig = { profiles: [], activePlantBoxId: null, ventilation_enabled: true, watering_enabled: true };\n"
+           "    let pendingFactoryReset = false;\n"
            "    let draftDirty = false;\n"
            "    let profileBoundsDirty = false;\n"
            "    let plantBoxBoundsDirty = false;\n"
@@ -2065,9 +2028,11 @@ std::string WebUiServer::build_index_html() {
            "        <div class=\"kv\"><strong>Profiler:</strong> ${escapeHtml(draft.join(', ') || 'ingen')}${draftTag}</div>\n"
            "        ${formatBoundsLine(aggregateProfileBounds(draft), draftPlantBox(), draftConfig.watering_enabled, draftConfig.ventilation_enabled)}\n"
            "        <div class=\"kv\"><strong>Ventilation:</strong> ${draftConfig.ventilation_enabled ? 'til' : 'fra'} &nbsp; <strong>Vanding:</strong> ${draftConfig.watering_enabled ? 'til' : 'fra'}</div>\n"
-           "        <div class=\"muted\" style=\"margin-top:0.45rem;font-size:0.82rem;\">Tryk <strong>Gem konfiguration</strong> for at skrive kladde til databasen og sætte <code>set_config</code> i kø (hvis klient er tilkoblet).</div>`;\n"
+           "        <div class=\"muted\" style=\"margin-top:0.45rem;font-size:0.82rem;\">Tryk <strong>Gem konfiguration</strong> for at gemme på Pi&nbsp;1, derefter <strong>Send konfiguration</strong> for at anvende på Pi&nbsp;2.</div>`;\n"
            "      const reqParts = [];\n"
-           "      if (draftConfig.profiles.length === 0) {\n"
+           "      if (pendingFactoryReset) {\n"
+           "        reqParts.push('Kladde er fabriksstandard. Gem skriver til Pi 1. Send konfiguration bagefter for Pi 2.');\n"
+           "      } else if (draftConfig.profiles.length === 0) {\n"
            "        reqParts.push('Du skal vælge mindst én profil i Profiler-sektionen før konfigurationen kan gemmes og køre.');\n"
            "      }\n"
            "      if (!overlapOk) {\n"
@@ -2079,7 +2044,9 @@ std::string WebUiServer::build_index_html() {
            "      requirement.textContent = reqParts.join(' ');\n"
            "      const btnSave = document.getElementById('btnSaveConfig');\n"
            "      if (btnSave) {\n"
-           "        btnSave.disabled = draftConfig.profiles.length === 0 || !overlapOk || !configDraftDiffers();\n"
+           "        btnSave.disabled = pendingFactoryReset\n"
+           "          ? false\n"
+           "          : (draftConfig.profiles.length === 0 || !overlapOk || !configDraftDiffers());\n"
            "      }\n"
            "      updateManualTestUi();\n"
            "      renderProfilesTable();\n"
@@ -2359,7 +2326,33 @@ std::string WebUiServer::build_index_html() {
            "      }\n"
            "      return true;\n"
            "    }\n"
+           "    function resetConfigDraft() {\n"
+           "      if (!confirm('Nulstil kladde til fabriksstandard? Tryk Gem for Pi 1, Send for Pi 2.')) return;\n"
+           "      pendingFactoryReset = true;\n"
+           "      draftConfig.profiles = [];\n"
+           "      draftConfig.activePlantBoxId = null;\n"
+           "      draftConfig.ventilation_enabled = false;\n"
+           "      draftConfig.watering_enabled = false;\n"
+           "      draftDirty = true;\n"
+           "      profileBoundsDirty = false;\n"
+           "      plantBoxBoundsDirty = false;\n"
+           "      renderProfilesTable();\n"
+           "      renderPlantBoxesTable();\n"
+           "      renderConfigViews();\n"
+           "    }\n"
            "    async function saveConfig() {\n"
+           "      if (pendingFactoryReset) {\n"
+           "        const resetResult = await sendControl('/api/config/factory-reset');\n"
+           "        pendingFactoryReset = false;\n"
+           "        if (!resetResult?.ok) {\n"
+           "          alert(resetResult?.error || 'Fabriksnulstilling fejlede.');\n"
+           "          return;\n"
+           "        }\n"
+           "        await loadProfiles();\n"
+           "        await loadPlantBoxes();\n"
+           "        await loadConfig();\n"
+           "        return;\n"
+           "      }\n"
            "      if (draftConfig.profiles.length === 0) {\n"
            "        alert('Du skal vælge mindst én profil før du kan gemme konfigurationen.');\n"
            "        return;\n"
@@ -2421,7 +2414,7 @@ std::string WebUiServer::build_index_html() {
            "      }\n"
            "      profileEditFrom = null;\n"
            "      if (result.replaced_profile) {\n"
-           "        document.getElementById('profileEditHint').textContent = 'Profilen er omdøbt, og aktiv konfiguration er opdateret hvor det gamle navn blev brugt. Tryk Gem konfiguration for at sende grænser til klienten.';\n"
+           "        document.getElementById('profileEditHint').textContent = 'Profilen er omdøbt, og aktiv konfiguration er opdateret hvor det gamle navn blev brugt. Gem konfiguration, derefter Send konfiguration til Pi 2.';\n"
            "      } else {\n"
            "        document.getElementById('profileEditHint').textContent = '';\n"
            "      }\n"

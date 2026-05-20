@@ -1,4 +1,9 @@
 build/
+build-wsl/
+
+# Local runtime / dev data (not source)
+data/
+ekstra/data/
 
 # Local CMake/Ninja build trees
 build-windows/

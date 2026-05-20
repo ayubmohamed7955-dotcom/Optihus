@@ -2,19 +2,93 @@
 
 #include "set_config_store.hpp"
 
-#if OPTIHUS_MILJOESTYRING_HARDWARE
 #include "hw/Ventilation system/Motor.hpp"
 #include "hw/Watering system/PlantBox.hpp"
-#endif
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
 #include "shared/types.hpp"
+#include "shared/time_utils.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
+#include <ctime>
 #include <thread>
 #include <string>
 #include <vector>
+#include <chrono>
+
+namespace {
+
+static std::time_t parse_iso8601_utc_ts(const std::string& ts_utc) {
+    if (!is_iso8601_utc(ts_utc)) {
+        return static_cast<std::time_t>(-1);
+    }
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (std::sscanf(
+            ts_utc.c_str(),
+            "%4d-%2d-%2dT%2d:%2d:%2dZ",
+            &year,
+            &month,
+            &day,
+            &hour,
+            &minute,
+            &second
+        )
+        != 6) {
+        return static_cast<std::time_t>(-1);
+    }
+    std::tm tm_utc {};
+    tm_utc.tm_year = year - 1900;
+    tm_utc.tm_mon = month - 1;
+    tm_utc.tm_mday = day;
+    tm_utc.tm_hour = hour;
+    tm_utc.tm_min = minute;
+    tm_utc.tm_sec = second;
+    return timegm(&tm_utc);
+}
+
+static int command_age_seconds(const std::string& ts_utc) {
+    const std::time_t sent = parse_iso8601_utc_ts(ts_utc);
+    if (sent < 0) {
+        return -1;
+    }
+    const std::time_t now = std::time(nullptr);
+    if (now < sent) {
+        return 0;
+    }
+    return static_cast<int>(now - sent);
+}
+
+static void log_command_age_if_notable(const std::string& action, const std::string& ts_utc) {
+    const int age_sec = command_age_seconds(ts_utc);
+    if (age_sec < 0) {
+        return;
+    }
+    if (age_sec >= 5) {
+        log_warn(
+            "control_manager",
+            "Inbound command age before apply: action=" + action + " age_sec="
+                + std::to_string(age_sec)
+                + " (possible queue/backpressure delay)"
+        );
+        return;
+    }
+    if (action == "set_config" || action == "manual_test_motor" || action == "manual_test_pump") {
+        log_info(
+            "control_manager",
+            "Inbound command age before apply: action=" + action + " age_sec="
+                + std::to_string(age_sec)
+        );
+    }
+}
+
+} // namespace
 
 static bool plant_box_entry_is_active(const nlohmann::json& box) {
     if (!box.is_object() || !box.contains("is_active")) {
@@ -149,7 +223,6 @@ static void log_plant_watering_decision(const PlantWateringDecision& decision) {
     }
 }
 
-#if OPTIHUS_MILJOESTYRING_HARDWARE
 static void apply_plant_water_decision(PlantBox* plant_box_hw, const PlantWateringDecision& decision) {
     if (plant_box_hw == nullptr) {
         return;
@@ -162,7 +235,6 @@ static void apply_plant_water_decision(PlantBox* plant_box_hw, const PlantWateri
         plant_box_hw->setPauseBetweenWateringSec(86400);
     }
 }
-#endif
 
 
 namespace miljoestyring {
@@ -182,6 +254,7 @@ void ControlManager::apply_inbound_message(
         log_warn("control_manager", "Ignored command: could not parse payload");
         return;
     }
+    log_command_age_if_notable(cmd->action, message.ts_utc);
 
     if (cmd->action == "set_config") {
         const auto& p = cmd->params;
@@ -202,7 +275,6 @@ void ControlManager::apply_inbound_message(
         const PlantWateringDecision plant_water = evaluate_plant_watering(p);
         log_plant_watering_decision(plant_water);
 
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         if (motor != nullptr) {
             if (p.contains("temp_bounds_c")) {
                 const auto& tb = p["temp_bounds_c"];
@@ -226,9 +298,7 @@ void ControlManager::apply_inbound_message(
             }
         }
         apply_plant_water_decision(plant_box, plant_water);
-#endif
 
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         const bool allow_ventilation_motion =
             !em && runtime.ventilation_enabled.load(std::memory_order_relaxed);
         const bool allow_watering_motion =
@@ -242,7 +312,6 @@ void ControlManager::apply_inbound_message(
         if (plant_box != nullptr) {
             plant_box->setActuationEnabled(allow_watering_motion);
         }
-#endif
 
         (void)persist_field_config_after_set_config(p, runtime.emergency_halt.load());
 
@@ -252,14 +321,12 @@ void ControlManager::apply_inbound_message(
 
     if (cmd->action == "emergency_stop") {
         runtime.emergency_halt.store(true);
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         if (motor != nullptr) {
             motor->setActuationEnabled(false);
         }
         if (plant_box != nullptr) {
             plant_box->setActuationEnabled(false);
         }
-#endif
         (void)persist_field_config_emergency_overlay(true);
         log_warn("control_manager", "Emergency stop from server");
         return;
@@ -267,20 +334,28 @@ void ControlManager::apply_inbound_message(
 
     if (cmd->action == "clear_emergency_stop") {
         runtime.emergency_halt.store(false);
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         if (runtime.server_config_received.load() && motor != nullptr && plant_box != nullptr) {
             const bool allow_ventilation_motion = runtime.ventilation_enabled.load(std::memory_order_relaxed);
             const bool allow_watering_motion = runtime.watering_actuation_allowed.load(std::memory_order_relaxed);
             motor->setActuationEnabled(allow_ventilation_motion);
             plant_box->setActuationEnabled(allow_watering_motion);
         }
-#endif
         (void)persist_field_config_emergency_overlay(false);
         log_info("control_manager", "Cleared emergency stop");
         return;
     }
 
     if (cmd->action == "manual_test_motor") {
+        constexpr int kManualCommandStaleSec = 15;
+        const int age_sec = command_age_seconds(message.ts_utc);
+        if (age_sec >= kManualCommandStaleSec) {
+            log_warn(
+                "control_manager",
+                "Dropped stale manual motor test command (age_sec=" + std::to_string(age_sec)
+                    + ", threshold_sec=" + std::to_string(kManualCommandStaleSec) + ")"
+            );
+            return;
+        }
         const bool systems_disabled =
             !runtime.ventilation_enabled.load(std::memory_order_relaxed)
             && !runtime.watering_enabled.load(std::memory_order_relaxed);
@@ -288,31 +363,52 @@ void ControlManager::apply_inbound_message(
             log_warn("control_manager", "Rejected manual motor test: system toggles not both disabled or emergency stop active");
             return;
         }
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         if (motor == nullptr) {
             log_warn("control_manager", "Manual motor test ignored: motor hardware unavailable");
             return;
         }
+        const auto started = std::chrono::steady_clock::now();
+        log_info("control_manager", "Manual motor test: start");
         constexpr int kManualMotorRepeats = 10;
         if (motor->isWindowOpen()) {
             for (int i = 0; i < kManualMotorRepeats; ++i) {
                 motor->close();
             }
-            log_info("control_manager", "Manual motor test: close x10");
+            const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - started
+            )
+                                        .count();
+            log_info(
+                "control_manager",
+                "Manual motor test: close x10 done in " + std::to_string(elapsed_ms) + "ms"
+            );
         } else {
             for (int i = 0; i < kManualMotorRepeats; ++i) {
                 motor->open();
             }
-            log_info("control_manager", "Manual motor test: open x10");
+            const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - started
+            )
+                                        .count();
+            log_info(
+                "control_manager",
+                "Manual motor test: open x10 done in " + std::to_string(elapsed_ms) + "ms"
+            );
         }
-#else
-        (void)motor;
-        log_info("control_manager", "Manual motor test ignored in stub hardware mode");
-#endif
         return;
     }
 
     if (cmd->action == "manual_test_pump") {
+        constexpr int kManualCommandStaleSec = 15;
+        const int age_sec = command_age_seconds(message.ts_utc);
+        if (age_sec >= kManualCommandStaleSec) {
+            log_warn(
+                "control_manager",
+                "Dropped stale manual pump test command (age_sec=" + std::to_string(age_sec)
+                    + ", threshold_sec=" + std::to_string(kManualCommandStaleSec) + ")"
+            );
+            return;
+        }
         const bool systems_disabled =
             !runtime.ventilation_enabled.load(std::memory_order_relaxed)
             && !runtime.watering_enabled.load(std::memory_order_relaxed);
@@ -320,17 +416,20 @@ void ControlManager::apply_inbound_message(
             log_warn("control_manager", "Rejected manual pump test: system toggles not both disabled or emergency stop active");
             return;
         }
-#if OPTIHUS_MILJOESTYRING_HARDWARE
         if (plant_box == nullptr) {
             log_warn("control_manager", "Manual pump test ignored: plant box hardware unavailable");
             return;
         }
+        const auto started = std::chrono::steady_clock::now();
+        log_info("control_manager", "Manual pump test: start");
         plant_box->manualPumpPulseSec(1);
-        log_info("control_manager", "Manual pump test: pulse 1s");
-#else
-        (void)plant_box;
-        log_info("control_manager", "Manual pump test ignored in stub hardware mode");
-#endif
+        const auto elapsed_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
+                .count();
+        log_info(
+            "control_manager",
+            "Manual pump test: pulse 1s done in " + std::to_string(elapsed_ms) + "ms"
+        );
         return;
     }
 

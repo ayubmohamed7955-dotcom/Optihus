@@ -10,10 +10,6 @@
 #include "shared/thread_safe_queue.hpp"
 #include "shared/types.hpp"
 
-#if defined(_WIN32)
-#include <winsock2.h>
-#endif
-
 class TcpClient {
 public:
     TcpClient(std::string host, int port);
@@ -35,13 +31,7 @@ private:
 
     std::string host_;
     int port_;
-
-#if defined(_WIN32)
-    SOCKET socket_fd_ {INVALID_SOCKET};
-    bool winsock_started_ {false};
-#else
     int socket_fd_ {-1};
-#endif
 
     std::thread reader_thread_;
     std::atomic<bool> reader_run_ {false};

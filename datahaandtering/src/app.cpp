@@ -41,7 +41,7 @@ int App::run() {
             << kHttpUiPort
             << " in a browser; AP example http://192.168.4.1:"
             << kHttpUiPort
-            << "). TUI optional via --tui";
+            << ")";
         log_info("datahaandtering", oss.str());
     }
 
@@ -71,9 +71,8 @@ void App::request_stop() {
 void App::handle_message(const MessageEnvelope& message) {
     switch (message.type) {
         case MessageType::Hello:
-            log_info("app", "Received hello. Sending active config.");
+            log_info("app", "Received hello from field node (config send only via web UI).");
             web_ui_server_.note_client_hello(message.ts_utc);
-            command_dispatcher_.dispatch_current_config();
             break;
         case MessageType::Telemetry:
             telemetry_queue_.push(message);

@@ -1,18 +1,14 @@
 #include "tcp_client.hpp"
 
+#include <cerrno>
+#include <cstring>
 #include <string>
 #include <utility>
 
-#if defined(_WIN32)
-#include <ws2tcpip.h>
-#else
-#include <cerrno>
-#include <cstring>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#endif
 
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
@@ -20,40 +16,24 @@
 #include "shared/message_codec.hpp"
 #include "shared/time_utils.hpp"
 
-#if defined(_WIN32)
-static std::string last_socket_error() {
-    return std::to_string(WSAGetLastError());
-}
-#else
+#include <nlohmann/json.hpp>
+
 static std::string last_socket_error() {
     return std::strerror(errno);
 }
-#endif
 
 TcpClient::TcpClient(std::string host, int port) : host_(std::move(host)), port_(port) {}
 
 TcpClient::~TcpClient() {
     disconnect();
-#if defined(_WIN32)
-    if (winsock_started_) {
-        WSACleanup();
-        winsock_started_ = false;
-    }
-#endif
 }
 
 void TcpClient::stop_reader() {
     reader_run_.store(false);
     if (reader_thread_.joinable()) {
-#if defined(_WIN32)
-        if (socket_fd_ != INVALID_SOCKET) {
-            shutdown(socket_fd_, SD_BOTH);
-        }
-#else
         if (socket_fd_ >= 0) {
             shutdown(socket_fd_, SHUT_RDWR);
         }
-#endif
         reader_thread_.join();
     }
 }
@@ -66,17 +46,6 @@ bool TcpClient::connect() {
         log_error("tcp_client", "Invalid server host/port");
         return false;
     }
-
-#if defined(_WIN32)
-    if (!winsock_started_) {
-        WSADATA wsa_data {};
-        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-            log_error("tcp_client", "WSAStartup failed");
-            return false;
-        }
-        winsock_started_ = true;
-    }
-#endif
 
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (!is_connected()) {
@@ -125,25 +94,15 @@ void TcpClient::disconnect() {
     stop_reader();
     read_buffer_.clear();
     if (is_connected()) {
-#if defined(_WIN32)
-        shutdown(socket_fd_, SD_BOTH);
-        closesocket(socket_fd_);
-        socket_fd_ = INVALID_SOCKET;
-#else
         shutdown(socket_fd_, SHUT_RDWR);
         close(socket_fd_);
         socket_fd_ = -1;
-#endif
         log_info("tcp_client", "Disconnected");
     }
 }
 
 bool TcpClient::is_connected() const {
-#if defined(_WIN32)
-    return socket_fd_ != INVALID_SOCKET;
-#else
     return socket_fd_ >= 0;
-#endif
 }
 
 bool TcpClient::is_reader_running() const {
@@ -161,11 +120,7 @@ void TcpClient::start_reader(ThreadSafeQueue<MessageEnvelope>& inbound) {
 void TcpClient::read_loop() {
     char chunk[1024];
     while (reader_run_.load() && is_connected()) {
-#if defined(_WIN32)
-        const int n = recv(socket_fd_, chunk, static_cast<int>(sizeof(chunk)), 0);
-#else
         const ssize_t n = recv(socket_fd_, chunk, sizeof(chunk), 0);
-#endif
         if (n <= 0) {
             if (n == 0) {
                 log_info("tcp_client", "Server closed connection (recv=0)");
@@ -184,9 +139,10 @@ void TcpClient::read_loop() {
             if (line.empty()) {
                 continue;
             }
+
             const auto parsed = decode_json_line(line);
             if (!parsed.has_value()) {
-                log_warn("tcp_client", "Dropped invalid JSON line from server");
+                log_warn("tcp_client", "Dropped invalid JSON line");
                 continue;
             }
             if (inbound_queue_ != nullptr) {
@@ -239,11 +195,7 @@ bool TcpClient::send_all(std::string_view payload) {
     const char* data = payload.data();
     std::size_t remaining = payload.size();
     while (remaining > 0) {
-#if defined(_WIN32)
-        const int sent = send(socket_fd_, data, static_cast<int>(remaining), 0);
-#else
         const ssize_t sent = send(socket_fd_, data, remaining, 0);
-#endif
         if (sent <= 0) {
             log_error("tcp_client", "send() failed: " + last_socket_error());
             return false;
@@ -253,4 +205,3 @@ bool TcpClient::send_all(std::string_view payload) {
     }
     return true;
 }
-

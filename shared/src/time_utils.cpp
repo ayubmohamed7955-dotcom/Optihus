@@ -6,16 +6,44 @@
 #include <iomanip>
 #include <sstream>
 
+namespace {
+
+std::tm utc_tm_from_time(std::time_t time_now) {
+    std::tm utc_tm {};
+    gmtime_r(&time_now, &utc_tm);
+    return utc_tm;
+}
+
+} // namespace
+
 std::string now_utc_iso8601() {
     const auto now = std::chrono::system_clock::now();
     const std::time_t time_now = std::chrono::system_clock::to_time_t(now);
+    const std::tm utc_tm = utc_tm_from_time(time_now);
 
-    std::tm utc_tm {};
-#if defined(_WIN32)
-    gmtime_s(&utc_tm, &time_now);
-#else
-    gmtime_r(&time_now, &utc_tm);
-#endif
+    std::ostringstream oss;
+    oss << std::put_time(&utc_tm, "%Y-%m-%dT%H:%M:%SZ");
+    return oss.str();
+}
+
+std::string utc_date_today() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t time_now = std::chrono::system_clock::to_time_t(now);
+    const std::tm utc_tm = utc_tm_from_time(time_now);
+
+    std::ostringstream oss;
+    oss << std::put_time(&utc_tm, "%Y-%m-%d");
+    return oss.str();
+}
+
+std::string utc_iso8601_days_ago(int days) {
+    if (days < 0) {
+        days = 0;
+    }
+    const auto now = std::chrono::system_clock::now();
+    const auto cutoff = now - std::chrono::hours(24 * days);
+    const std::time_t time_cutoff = std::chrono::system_clock::to_time_t(cutoff);
+    const std::tm utc_tm = utc_tm_from_time(time_cutoff);
 
     std::ostringstream oss;
     oss << std::put_time(&utc_tm, "%Y-%m-%dT%H:%M:%SZ");

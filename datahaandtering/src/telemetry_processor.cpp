@@ -3,6 +3,7 @@
 
 #include "shared/constants.hpp"
 #include "shared/logger.hpp"
+#include "shared/time_utils.hpp"
 
 TelemetryProcessor::TelemetryProcessor(
     DatabaseManager& db_manager,
@@ -47,7 +48,19 @@ void TelemetryProcessor::worker_loop() {
     }
 }
 
+void TelemetryProcessor::maybe_prune_telemetry_retention() {
+    const std::string today = utc_date_today();
+    std::lock_guard<std::mutex> lock(prune_mutex_);
+    if (last_prune_utc_date_ == today) {
+        return;
+    }
+    (void)db_manager_.prune_telemetry_older_than_days(kTelemetryRetentionDays);
+    last_prune_utc_date_ = today;
+}
+
 void TelemetryProcessor::process_telemetry_message(const MessageEnvelope& message) {
+    maybe_prune_telemetry_retention();
+
     const auto telemetry = telemetry_from_json(message.data);
     if (!telemetry.has_value()) {
         log_warn("telemetry_processor", "Skipping invalid telemetry payload");
