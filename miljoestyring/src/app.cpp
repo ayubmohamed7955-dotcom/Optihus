@@ -188,6 +188,29 @@ int App::run() {
         }
     };
 
+    std::string last_pump_status;
+    std::string last_motor_status;
+    auto send_enriched_telemetry = [&](bool status_change_event) -> bool {
+        TelemetrySample enriched = sensor_manager.read_sample(&runtime);
+        enriched.field_live_json = build_field_live_json(client, runtime, motor, plant_box);
+        if (!client.send_telemetry(enriched)) {
+            return false;
+        }
+        if (status_change_event) {
+            log_info(
+                "miljoestyring",
+                "Sent immediate telemetry on status change (pump="
+                    + enriched.pump_status
+                    + ", motor="
+                    + enriched.motor_status
+                    + ")"
+            );
+        }
+        last_pump_status = enriched.pump_status;
+        last_motor_status = enriched.motor_status;
+        return true;
+    };
+
     reconnect();
 
     while (true) {
@@ -198,9 +221,7 @@ int App::run() {
 
         process_inbound();
 
-        TelemetrySample enriched = sensor_manager.read_sample(&runtime);
-        enriched.field_live_json = build_field_live_json(client, runtime, motor, plant_box);
-        if (!client.send_telemetry(enriched)) {
+        if (!send_enriched_telemetry(false)) {
             log_warn("miljoestyring", "Telemetry send failed. Reconnecting...");
             reconnect();
             continue;
@@ -216,6 +237,16 @@ int App::run() {
                 log_warn("miljoestyring", "Connection lost during wait. Reconnecting...");
                 reconnect();
                 break;
+            }
+            const std::string pump_status_now = plant_box.isPumpOn() ? "on" : "off";
+            const std::string motor_status_now = motor.isWindowOpen() ? "open" : "closed";
+            const bool status_changed = pump_status_now != last_pump_status || motor_status_now != last_motor_status;
+            if (status_changed) {
+                if (!send_enriched_telemetry(true)) {
+                    log_warn("miljoestyring", "Telemetry send failed during status change. Reconnecting...");
+                    reconnect();
+                    break;
+                }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(kInboundPollStepMs));
         }

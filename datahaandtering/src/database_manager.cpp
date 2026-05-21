@@ -957,14 +957,14 @@ bool DatabaseManager::apply_factory_defaults() {
     };
 
     const std::string now = now_utc_iso8601();
-    if (!exec_locked("DELETE FROM profiles WHERE is_default = 0;")) {
+    if (!exec_locked("DELETE FROM profiles;")) {
         return false;
     }
 
     const std::array<Profile, 3> defaults {
         Profile {"tomato", 55.0, 75.0, 35.0, 60.0, 18.0, 26.0, 60, true},
         Profile {"cucumber", 60.0, 85.0, 45.0, 70.0, 20.0, 28.0, 60, true},
-        Profile {"chili", 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, true},
+        Profile {"peberfrugt", 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, true},
     };
     const char* profile_sql =
         "INSERT INTO profiles(name, crop_type, min_humidity_air, max_humidity_air, "
@@ -998,48 +998,11 @@ bool DatabaseManager::apply_factory_defaults() {
         }
     }
 
-    if (!exec_locked("DELETE FROM plant_boxes WHERE is_default = 0;")) {
-        return false;
-    }
-    if (!exec_locked("UPDATE plant_boxes SET is_active = 0;")) {
+    if (!exec_locked("DELETE FROM plant_boxes;")) {
         return false;
     }
 
-    int default_box_id = 0;
     {
-        const char* find_sql = "SELECT id FROM plant_boxes WHERE is_default = 1 LIMIT 1;";
-        sqlite3_stmt* find_stmt = nullptr;
-        if (sqlite3_prepare_v2(db_, find_sql, -1, &find_stmt, nullptr) != SQLITE_OK) {
-            return false;
-        }
-        if (sqlite3_step(find_stmt) == SQLITE_ROW) {
-            default_box_id = sqlite3_column_int(find_stmt, 0);
-        }
-        sqlite3_finalize(find_stmt);
-    }
-
-    PlantBoxConfig box;
-    if (default_box_id > 0) {
-        box.id = default_box_id;
-    }
-    box.label = kDefaultPlantBoxLabel;
-    box.slot = 1;
-    box.is_active = false;
-    box.is_default = true;
-    box.min_soil_pct = kDefaultPlantMinSoilPct;
-    box.max_soil_pct = 100.0;
-    box.pump_duration_sec = 1;
-    box.hysteresis_sec = kDefaultPlantHysteresisSec;
-
-    const char* box_sql =
-        "INSERT INTO plant_boxes(id, label, slot, is_active, is_default, min_soil_pct, max_soil_pct, "
-        "pump_duration_sec, hysteresis_sec, created_at, updated_at) "
-        "VALUES(?, ?, ?, 0, 1, ?, 100.0, 1, ?, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET label=excluded.label, slot=excluded.slot, is_active=0, "
-        "is_default=1, min_soil_pct=excluded.min_soil_pct, max_soil_pct=excluded.max_soil_pct, "
-        "pump_duration_sec=excluded.pump_duration_sec, hysteresis_sec=excluded.hysteresis_sec, "
-        "updated_at=excluded.updated_at;";
-    if (default_box_id <= 0) {
         const char* insert_sql =
             "INSERT INTO plant_boxes(label, slot, is_active, is_default, min_soil_pct, max_soil_pct, "
             "pump_duration_sec, hysteresis_sec, created_at, updated_at) "
@@ -1048,29 +1011,12 @@ bool DatabaseManager::apply_factory_defaults() {
         if (sqlite3_prepare_v2(db_, insert_sql, -1, &stmt, nullptr) != SQLITE_OK) {
             return false;
         }
-        bind_text(stmt, 1, box.label);
-        sqlite3_bind_int(stmt, 2, box.slot);
-        sqlite3_bind_double(stmt, 3, box.min_soil_pct);
-        sqlite3_bind_int(stmt, 4, box.hysteresis_sec);
+        bind_text(stmt, 1, kDefaultPlantBoxLabel);
+        sqlite3_bind_int(stmt, 2, 1);
+        sqlite3_bind_double(stmt, 3, kDefaultPlantMinSoilPct);
+        sqlite3_bind_int(stmt, 4, kDefaultPlantHysteresisSec);
         bind_text(stmt, 5, now);
         bind_text(stmt, 6, now);
-        const bool step_ok = sqlite3_step(stmt) == SQLITE_DONE;
-        sqlite3_finalize(stmt);
-        if (!step_ok) {
-            return false;
-        }
-    } else {
-        sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db_, box_sql, -1, &stmt, nullptr) != SQLITE_OK) {
-            return false;
-        }
-        sqlite3_bind_int(stmt, 1, box.id);
-        bind_text(stmt, 2, box.label);
-        sqlite3_bind_int(stmt, 3, box.slot);
-        sqlite3_bind_double(stmt, 4, box.min_soil_pct);
-        sqlite3_bind_int(stmt, 5, box.hysteresis_sec);
-        bind_text(stmt, 6, now);
-        bind_text(stmt, 7, now);
         const bool step_ok = sqlite3_step(stmt) == SQLITE_DONE;
         sqlite3_finalize(stmt);
         if (!step_ok) {
@@ -1080,11 +1026,11 @@ bool DatabaseManager::apply_factory_defaults() {
 
     ActiveConfig cfg;
     cfg.mode = Mode::Auto;
-    cfg.profile_name = "";
+    cfg.profile_name = "tomato";
     cfg.interval_sec = 60;
     cfg.emergency_stop = false;
-    cfg.ventilation_enabled = false;
-    cfg.watering_enabled = false;
+    cfg.ventilation_enabled = true;
+    cfg.watering_enabled = true;
 
     const char* active_sql =
         "INSERT INTO active_config(id, timestamp, mode, profile_name, interval_sec, emergency_stop, "

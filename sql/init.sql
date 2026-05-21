@@ -94,7 +94,7 @@ INSERT OR IGNORE INTO profiles (
 ) VALUES
     ('tomato', 'tomato', 55.0, 75.0, 35.0, 60.0, 18.0, 26.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
     ('cucumber', 'cucumber', 60.0, 85.0, 45.0, 70.0, 20.0, 28.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
-    ('chili', 'chili', 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z');
+    ('peberfrugt', 'peberfrugt', 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z');
 
 INSERT INTO plant_boxes (
     label, slot, is_active, is_default, min_soil_pct, max_soil_pct, pump_duration_sec,
