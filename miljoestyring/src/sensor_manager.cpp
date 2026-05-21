@@ -25,12 +25,8 @@ TelemetrySample SensorManager::read_sample(const ClientRuntimeState* runtime) co
     sample.temperature_c = static_cast<double>(motor_->getCurrentTemp());
     sample.humidity_air = static_cast<double>(motor_->getCurrentHumid());
     sample.humidity_soil = static_cast<double>(plant_box_->getCurrentAverageMoisture());
-    // Pump pulser kan vare ~1s, mens telemetry typisk er 60s.
-    // Markér kortvarigt som "on" efter en puls, så Grafana ikke mister hændelsen mellem samples.
-    constexpr int kPumpRecentWindowSec = 90;
-    const bool pump_live = plant_box_->isPumpOn();
-    const bool pump_recent = plant_box_->wasPumpOnWithinSec(kPumpRecentWindowSec);
-    sample.pump_status = (pump_live || pump_recent) ? "on" : "off";
+    // Kortvarige pump-events håndteres nu i app.cpp via immediate telemetry ved statusskift.
+    sample.pump_status = plant_box_->isPumpOn() ? "on" : "off";
     sample.motor_status = motor_->isWindowOpen() ? "open" : "closed";
     if (runtime != nullptr && runtime->emergency_halt.load()) {
         sample.error_status = "emergency_stop";
