@@ -1,7 +1,8 @@
-#include "hw/Ventilation system/Motor.hpp"
+
+#include "hw/ClimateControl/Motor.hpp"
 
 #include "hw/board_pins.hpp"
-#include "hw/Ventilation system/DHT22.hpp"
+#include "hw/ClimateControl/DHT22.hpp"
 #include <unistd.h>
 #include <iostream>
 #include <chrono>
@@ -122,7 +123,7 @@ void Motor::runLoop() {
                 std::cout << "shouldclose\n";
                 shouldOpen = false;
             }
-            //overwrite with opening if both conditions are true, to prioritize opening for high temp/humidity
+
             if (humidity > humidityMax || temp > tempMax) {
                 std::cout << "shouldopen\n";
                 shouldOpen = true;

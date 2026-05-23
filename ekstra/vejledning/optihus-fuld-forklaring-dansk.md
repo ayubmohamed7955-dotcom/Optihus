@@ -212,7 +212,7 @@ Programmet hedder **`miljoestyring`**.
 | **`control_manager.cpp`** | Fortolker **`Command`**. Ved **`set_config`**: interval, grænser, plant_boxes, **`server_config_received`**, **`setActuationEnabled`** på motor/plant_box (kun reel styring efter konfiguration). Gemmer persistens på disk. Ved nødstop: slår aktuation fra og opdaterer overlay i persistensfil hvis den findes. **`clear_emergency_stop`**: genaktiverer aktuation kun hvis konfiguration allerede er modtaget (som i koden). |
 | **`set_config_store.cpp`** | Atomisk lagring af sidste **`set_config`** + nødstop-overlay; genindlæsning ved boot. |
 
-Under **`include/`** og **`src/hw/`** (mapper **Ventilation system** og **Watering system**):
+Under **`include/`** og **`src/hw/`** (mapper **ClimateControl** og **WateringSystem**):
 
 | Komponent | Fil(er) | Hvad det er |
 |-----------|---------|-------------|
@@ -451,4 +451,4 @@ Der er ikke længere kildefiler i repoet, som bevidst ligger uden for `CMakeList
 
 ---
 
-*Sidst ajourført: dokumentation og diagrammer stemmer med Motor/PlantBox/DHT22, `board_pins`, persistens (`set_config_store`), telemetri `field_live` / Web `field_node`, og hardware-mapperne **Ventilation system** / **Watering system**.*
+*Sidst ajourført: dokumentation og diagrammer stemmer med Motor/PlantBox/DHT22, `board_pins`, persistens (`set_config_store`), telemetri `field_live` / Web `field_node`, og hardware-mapperne **ClimateControl** / **WateringSystem**.*

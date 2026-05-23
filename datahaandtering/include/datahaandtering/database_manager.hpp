@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <mutex>
@@ -20,16 +21,16 @@ public:
     void close();
 
     bool initialize_schema(const std::string& init_sql_path);
-    /** Upgrades existing tables (call after initialize_schema on new databases). */
+
     bool apply_schema_migrations();
-    /** Factory profiles/plant box + aktiv config (begge systemer fra, ingen valgt profil). */
+
     bool apply_factory_defaults();
     bool insert_telemetry(
         const std::string& timestamp_utc,
         const TelemetrySample& sample,
         const std::string& source
     );
-    /** Deletes telemetry rows with timestamp strictly older than `days` (UTC). Returns rows removed. */
+
     int prune_telemetry_older_than_days(int days);
     bool insert_system_event(
         const std::string& timestamp_utc,
@@ -54,7 +55,7 @@ public:
 
     bool load_active_config(ActiveConfig& out_config);
     bool save_active_config(const ActiveConfig& config, const std::string& timestamp_utc);
-    /// ISO-8601 timestamp for row id=1, or empty if missing.
+
     std::string read_active_config_timestamp_utc() const;
 
     const std::string& db_path() const;

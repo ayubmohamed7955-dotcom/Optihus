@@ -92,7 +92,7 @@ static void log_command_age_if_notable(const std::string& action, const std::str
     }
 }
 
-} // namespace
+}
 
 static bool plant_box_entry_is_active(const nlohmann::json& box) {
     if (!box.is_object() || !box.contains("is_active")) {

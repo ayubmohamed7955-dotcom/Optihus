@@ -1,6 +1,7 @@
-// PlantBox.cpp
 
-#include "hw/Watering system/PlantBox.hpp"
+
+
+#include "hw/WateringSystem/PlantBox.hpp"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -166,7 +167,7 @@ void PlantBox::monitorLoop() {
         int totalADC = 0;
         int validMeasurements = 0;
 
-        // 5 målinger over 10 sekunder
+
         for (int i = 0; i < 5 && running; i++) {
 
             int raw_adc = readADC();
@@ -204,7 +205,7 @@ void PlantBox::monitorLoop() {
 
             currentAverageMoisture = averageMoisture;
 
-            // Hvis jorden er for tør
+
             if (actuation_enabled_.load(std::memory_order_relaxed) &&
                 averageMoisture <= minimumThreshold && pumpPauseTime < std::chrono::system_clock::now()) {
                 pumpPauseTime = std::chrono::system_clock::now()
@@ -216,7 +217,7 @@ void PlantBox::monitorLoop() {
 
                 setPumpState(true);
 
-                // Pumpen kører 1 sekund
+
                 std::this_thread::sleep_for(
                     std::chrono::seconds(1)
                 );
@@ -234,10 +235,10 @@ void PlantBox::monitorLoop() {
                     pauseBetweenWateringSec
                 );
 
-                // Pause efter vanding
-                // std::this_thread::sleep_for(
-                //     std::chrono::seconds(10)
-                //);
+
+
+
+
             }
         }
     }

@@ -1,3 +1,4 @@
+
 #include "datahaandtering/tcp_server.hpp"
 
 #include <cerrno>
@@ -12,6 +13,7 @@
 
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
+
 
 static std::string last_socket_error() {
     return std::strerror(errno);
@@ -29,6 +31,8 @@ TcpServer::~TcpServer() {
 }
 
 bool TcpServer::start() {
+
+
     if (port_ <= 0 || running_.exchange(true)) {
         return false;
     }
@@ -115,6 +119,7 @@ void TcpServer::accept_loop() {
 }
 
 void TcpServer::start_session(int client_socket) {
+
     std::lock_guard<std::mutex> lock(session_mutex_);
     stop_session_locked();
 
@@ -176,6 +181,7 @@ void TcpServer::read_loop() {
     buffer.reserve(4096);
     char chunk[1024];
 
+
     while (session_running_) {
         const ssize_t n = recv(client_socket_, chunk, sizeof(chunk), 0);
         if (n <= 0) {
@@ -209,6 +215,7 @@ void TcpServer::read_loop() {
 
 void TcpServer::write_loop() {
     log_info("tcp_server", "write_loop started");
+
     while (session_running_) {
         const auto next = outbound_queue_.wait_pop();
         if (!next.has_value()) {

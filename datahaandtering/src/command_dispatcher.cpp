@@ -1,3 +1,4 @@
+
 #include "datahaandtering/command_dispatcher.hpp"
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include "shared/logger.hpp"
 #include "shared/time_utils.hpp"
 #include "shared/types.hpp"
+
 
 static std::vector<std::string> split_csv(const std::string& value) {
     std::vector<std::string> out;
@@ -42,6 +44,7 @@ static bool aggregate_bounds_if_compatible(
     const std::vector<Profile>& selected_profiles,
     AggregatedBounds& out_bounds
 ) {
+
     if (selected_profiles.empty()) {
         return false;
     }
@@ -72,6 +75,8 @@ static bool build_bounds_payload(
     nlohmann::json& out_bounds,
     nlohmann::json& out_temp_bounds
 ) {
+
+
     const auto all = db_manager.list_profiles();
     std::vector<Profile> selected;
     selected.reserve(profile_names.size());
@@ -115,6 +120,8 @@ static bool build_bounds_payload(
 }
 
 static nlohmann::json build_plant_boxes_payload(DatabaseManager& db_manager) {
+
+
     const auto boxes = db_manager.list_plant_boxes();
     nlohmann::json out = nlohmann::json::array();
     for (const auto& box : boxes) {
@@ -141,6 +148,7 @@ CommandDispatcher::CommandDispatcher(
     : config_manager_(config_manager), db_manager_(db_manager), outbound_queue_(outbound_queue) {}
 
 bool CommandDispatcher::dispatch_current_config() {
+
     const auto config = config_manager_.current_config();
     const auto profile_names = split_csv(config.profile_name);
     nlohmann::json bounds;
@@ -187,6 +195,7 @@ bool CommandDispatcher::enqueue_command(
     const CommandPayload& command_payload,
     const std::string& status
 ) {
+
     MessageEnvelope message = make_message(
         MessageType::Command,
         std::string(kSourceDatahaandtering),

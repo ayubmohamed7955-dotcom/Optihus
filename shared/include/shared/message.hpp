@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <nlohmann/json.hpp>
@@ -37,7 +38,7 @@ struct TelemetryPayload {
     std::string pump_status {"off"};
     std::string motor_status {"closed"};
     std::string error_status {"none"};
-    /** Valgfrit objekt fra felt-node (Pi 2): TCP, hardware-tråde, aktuation osv. */
+
     nlohmann::json field_live = nlohmann::json::object();
 };
 

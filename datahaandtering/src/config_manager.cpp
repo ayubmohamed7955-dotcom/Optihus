@@ -1,11 +1,14 @@
+
 #include "datahaandtering/config_manager.hpp"
 
 #include "shared/constants.hpp"
 #include "shared/time_utils.hpp"
 
 ConfigManager::ConfigManager(DatabaseManager& db_manager) : db_manager_(db_manager) {
-    active_config_.profile_name = "tomato";
+    active_config_.profile_name = "";
     active_config_.interval_sec = kDefaultIntervalSec;
+    active_config_.ventilation_enabled = false;
+    active_config_.watering_enabled = false;
 }
 
 bool ConfigManager::load_active_config() {

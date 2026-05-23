@@ -1,10 +1,11 @@
+
 #include "app.hpp"
 
 #include "client_state.hpp"
 #include "control_manager.hpp"
 #include "hw/board_pins.hpp"
-#include "hw/Ventilation system/Motor.hpp"
-#include "hw/Watering system/PlantBox.hpp"
+#include "hw/ClimateControl/Motor.hpp"
+#include "hw/WateringSystem/PlantBox.hpp"
 #include "sensor_manager.hpp"
 #include "set_config_store.hpp"
 #include "tcp_client.hpp"
@@ -32,6 +33,7 @@ struct NetworkConfig {
 };
 
 static NetworkConfig load_network_config() {
+
     NetworkConfig cfg;
     std::ifstream file("miljoestyring_config.json");
     if (!file.is_open()) {
@@ -60,7 +62,7 @@ static void attempt_wifi_recovery() {
     (void)std::system("nmcli dev wifi rescan >/dev/null 2>&1");
 }
 
-/** Snapshot til web UI «field_node» via telemetri (`field_live`). */
+
 static std::string build_field_live_json(
     const TcpClient& client,
     const ClientRuntimeState& runtime,
@@ -156,6 +158,8 @@ int App::run() {
         );
     }
 
+
+
     auto reconnect = [&]() {
         client.disconnect();
         int attempts = 0;
@@ -178,6 +182,8 @@ int App::run() {
         client.start_reader(inbound);
     };
 
+
+
     auto process_inbound = [&]() {
         for (;;) {
             const auto msg = inbound.try_pop();
@@ -190,6 +196,7 @@ int App::run() {
 
     std::string last_pump_status;
     std::string last_motor_status;
+
     auto send_enriched_telemetry = [&](bool status_change_event) -> bool {
         TelemetrySample enriched = sensor_manager.read_sample(&runtime);
         enriched.field_live_json = build_field_live_json(client, runtime, motor, plant_box);

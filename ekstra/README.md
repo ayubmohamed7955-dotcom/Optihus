@@ -27,8 +27,8 @@ Optihus/
 |  |  |- set_config_store.hpp
 |  |  `- hw/
 |  |     |- board_pins.hpp
-|  |     |- Ventilation system/
-|  |     `- Watering system/
+|  |     |- ClimateControl/
+|  |     `- WateringSystem/
 |  `- src/
 |- shared/
 |  |- README.md

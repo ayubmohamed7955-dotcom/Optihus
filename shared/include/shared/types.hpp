@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <optional>
@@ -10,9 +11,7 @@ enum class Mode {
 };
 
 struct Profile {
-    /// Unik profilnøgle (i praksis: det brugeren kalder afgrøden, f.eks. "Tomat" eller "tomato").
-    /// DB `profiles.crop_type` er et separat felt i skemaet; i v1 sættes det ved upsert til samme
-    /// streng som `name` (ingen egenskilt afgrøde-enum endnu).
+
     std::string name;
     double min_humidity_air {0.0};
     double max_humidity_air {0.0};
@@ -26,16 +25,16 @@ struct Profile {
 
 struct ActiveConfig {
     Mode mode {Mode::Auto};
-    std::string profile_name {"tomato"};
+    std::string profile_name {""};
     int interval_sec {60};
     bool emergency_stop {false};
-    /** When false, Pi 2 disables ventilation motor actuation (sensors may still run). */
-    bool ventilation_enabled {true};
-    /** When false, Pi 2 disables pump actuation (sensors may still run). */
-    bool watering_enabled {true};
+
+    bool ventilation_enabled {false};
+
+    bool watering_enabled {false};
 };
 
-/// Sentinel: plant box field not configured by user (DB / JSON).
+
 inline constexpr double kPlantBoxUnsetMinSoilPct = -1.0;
 inline constexpr int kPlantBoxUnsetHysteresisSec = -1;
 
@@ -43,7 +42,7 @@ inline constexpr const char* kDefaultPlantBoxLabel = "Plantekasse 1";
 inline constexpr double kDefaultPlantMinSoilPct = 20.0;
 inline constexpr int kDefaultPlantHysteresisSec = 30;
 
-/// Logical plantbox profile (persisted as `plant_boxes`; v1: soil/pump params for the active profile only on client).
+
 struct PlantBoxConfig {
     int id {0};
     std::string label;
@@ -51,8 +50,6 @@ struct PlantBoxConfig {
     bool is_active {false};
     bool is_default {false};
     double min_soil_pct {kDefaultPlantMinSoilPct};
-    double max_soil_pct {100.0};
-    int pump_duration_sec {1};
     int hysteresis_sec {kDefaultPlantHysteresisSec};
 };
 
@@ -76,7 +73,7 @@ struct TelemetrySample {
     std::string pump_status {"off"};
     std::string motor_status {"closed"};
     std::string error_status {"none"};
-    /** Serialiseret JSON-objekt til drift/fejlsøgning (felt-node komponenter/forbindelse); tom = udelades på ledningen. */
+
     std::string field_live_json;
 };
 

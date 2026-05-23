@@ -1,4 +1,5 @@
-// PlantBox.h
+
+
 
 #ifndef PLANT_BOX_H
 #define PLANT_BOX_H
@@ -27,7 +28,7 @@ private:
     void monitorLoop();
 
     std::atomic<int> currentAverageMoisture;
-    /** Optihus: seneste pumpe-tilstand til telemetry (ikke i oprindelig zip-header). */
+
     std::atomic<bool> pumpOn_{false};
     std::atomic<bool> actuation_enabled_{false};
 
@@ -39,13 +40,13 @@ public:
     void stop();
 
     void setMinimumThreshold(int value);
-    /** Pause mellem vandinger (sek.); sættes fra server `hysteresis_sec` når brugeren har konfigureret plantekasse. */
+
     void setPauseBetweenWateringSec(int value);
     float getCurrentAverageMoisture();
     bool isPumpOn() const { return pumpOn_.load(); }
     void manualPumpPulseSec(int seconds);
 
-    /** false ved levering: jordfugt opdateres stadig; pumpe først når Optihus sætter true efter server-konfiguration. */
+
     void setActuationEnabled(bool enabled);
     bool isActuationEnabled() const { return actuation_enabled_.load(std::memory_order_relaxed); }
     bool isRunning() const { return running.load(std::memory_order_relaxed); }

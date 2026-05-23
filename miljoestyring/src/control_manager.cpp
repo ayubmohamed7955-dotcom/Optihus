@@ -1,9 +1,10 @@
+
 #include "control_manager.hpp"
 
 #include "set_config_store.hpp"
 
-#include "hw/Ventilation system/Motor.hpp"
-#include "hw/Watering system/PlantBox.hpp"
+#include "hw/ClimateControl/Motor.hpp"
+#include "hw/WateringSystem/PlantBox.hpp"
 #include "shared/logger.hpp"
 #include "shared/message_codec.hpp"
 #include "shared/types.hpp"
@@ -19,6 +20,8 @@
 #include <chrono>
 
 namespace {
+
+
 
 static std::time_t parse_iso8601_utc_ts(const std::string& ts_utc) {
     if (!is_iso8601_utc(ts_utc)) {
@@ -88,7 +91,7 @@ static void log_command_age_if_notable(const std::string& action, const std::str
     }
 }
 
-} // namespace
+}
 
 static bool plant_box_entry_is_active(const nlohmann::json& box) {
     if (!box.is_object() || !box.contains("is_active")) {
@@ -115,12 +118,12 @@ enum class PlantWateringMode {
 struct PlantWateringDecision {
     PlantWateringMode mode {PlantWateringMode::MissingPlantBoxes};
     int min_soil_pct {100};
-    int max_soil_pct {100};
-    int pump_duration_sec {1};
     int hysteresis_sec {600};
     int active_id {0};
     std::string active_label;
 };
+
+
 
 static PlantWateringDecision evaluate_plant_watering(const nlohmann::json& params) {
     PlantWateringDecision d;
@@ -173,8 +176,6 @@ static PlantWateringDecision evaluate_plant_watering(const nlohmann::json& param
 
     const int smin = static_cast<int>(std::lround(min_soil_raw));
     d.min_soil_pct = std::max(0, std::min(100, smin));
-    d.max_soil_pct = 100;
-    d.pump_duration_sec = 1;
     d.hysteresis_sec = std::max(0, std::min(86400, hyst_raw));
 
     return d;
@@ -245,6 +246,8 @@ void ControlManager::apply_inbound_message(
     Motor* motor,
     PlantBox* plant_box
 ) {
+
+
     if (message.type != MessageType::Command) {
         return;
     }

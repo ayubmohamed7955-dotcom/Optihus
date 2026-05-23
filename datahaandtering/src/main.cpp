@@ -1,3 +1,4 @@
+
 #include "datahaandtering/app.hpp"
 #include "datahaandtering/command_dispatcher.hpp"
 #include "datahaandtering/config_manager.hpp"
@@ -18,7 +19,7 @@
 
 static App* g_app = nullptr;
 
-static void handle_signal(int /*signal_number*/) {
+static void handle_signal(int ) {
     if (g_app != nullptr) {
         g_app->request_stop();
     }

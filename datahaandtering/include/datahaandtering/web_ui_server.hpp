@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <atomic>
@@ -28,7 +29,7 @@ public:
     bool start();
     void stop();
     void note_client_hello(const std::string& timestamp_utc);
-    /** Seneste felt-node komponentoversigt fra telemetri (`field_live`), spejlet under GET /api/status → field_node. */
+
     void note_field_live(std::string components_json, std::string telemetry_ts_utc);
 
 private:
@@ -64,7 +65,6 @@ private:
     std::string build_config_json() const;
     std::string build_profiles_json() const;
     std::string build_plant_boxes_json() const;
-    static std::string build_index_html();
 
     int port_;
     TcpServer& tcp_server_;

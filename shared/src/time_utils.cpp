@@ -1,3 +1,4 @@
+
 #include "shared/time_utils.hpp"
 
 #include <chrono>
@@ -14,7 +15,7 @@ std::tm utc_tm_from_time(std::time_t time_now) {
     return utc_tm;
 }
 
-} // namespace
+}
 
 std::string now_utc_iso8601() {
     const auto now = std::chrono::system_clock::now();
@@ -51,7 +52,7 @@ std::string utc_iso8601_days_ago(int days) {
 }
 
 bool is_iso8601_utc(std::string_view value) {
-    // Expected format: YYYY-MM-DDTHH:MM:SSZ
+
     if (value.size() != 20) {
         return false;
     }

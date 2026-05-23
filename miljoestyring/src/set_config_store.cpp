@@ -1,3 +1,4 @@
+
 #include "set_config_store.hpp"
 
 #include "shared/logger.hpp"
@@ -12,6 +13,7 @@ namespace miljoestyring {
 namespace {
 
 constexpr int kFileFormatVersion = 2;
+
 
 std::filesystem::path default_state_directory() {
     if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
@@ -32,6 +34,7 @@ std::filesystem::path state_file_path() {
 }
 
 std::optional<nlohmann::json> load_document_raw() {
+
     try {
         const auto path = state_file_path();
         if (!std::filesystem::exists(path)) {
@@ -52,6 +55,7 @@ std::optional<nlohmann::json> load_document_raw() {
 }
 
 bool save_document(const nlohmann::json& doc) {
+
     try {
         const auto dir = state_directory();
         std::filesystem::create_directories(dir);
@@ -83,9 +87,10 @@ bool save_document(const nlohmann::json& doc) {
     }
 }
 
-} // namespace
+}
 
 bool persist_field_config_after_set_config(const nlohmann::json& params, bool emergency_halt_runtime) {
+
     nlohmann::json doc;
     doc["version"] = kFileFormatVersion;
     doc["saved_at_utc"] = now_utc_iso8601();
@@ -102,6 +107,7 @@ bool persist_field_config_after_set_config(const nlohmann::json& params, bool em
 }
 
 bool persist_field_config_emergency_overlay(bool emergency_halt_runtime) {
+
     const auto existing = load_document_raw();
     if (!existing.has_value()) {
         return false;
@@ -114,6 +120,7 @@ bool persist_field_config_emergency_overlay(bool emergency_halt_runtime) {
 }
 
 std::optional<nlohmann::json> load_field_config_for_replay() {
+
     const auto doc = load_document_raw();
     if (!doc.has_value()) {
         return std::nullopt;
@@ -139,4 +146,4 @@ std::optional<nlohmann::json> load_field_config_for_replay() {
     return merged;
 }
 
-} // namespace miljoestyring
+}

@@ -1,3 +1,4 @@
+
 #include "datahaandtering/app.hpp"
 
 #include "shared/constants.hpp"
@@ -22,6 +23,7 @@ App::App(
       telemetry_queue_(telemetry_queue) {}
 
 int App::run() {
+
     if (!tcp_server_.start()) {
         log_error("datahaandtering", "Failed to start TCP server");
         return 1;
@@ -44,6 +46,7 @@ int App::run() {
             << ")";
         log_info("datahaandtering", oss.str());
     }
+
 
     while (running_) {
         const auto next = inbound_queue_.wait_pop();
@@ -69,6 +72,8 @@ void App::request_stop() {
 }
 
 void App::handle_message(const MessageEnvelope& message) {
+
+
     switch (message.type) {
         case MessageType::Hello:
             log_info("app", "Received hello from field node (config send only via web UI).");

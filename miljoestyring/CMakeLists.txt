@@ -9,9 +9,16 @@ add_executable(miljoestyring
     src/sensor_manager.cpp
     src/control_manager.cpp
     src/set_config_store.cpp
-    "src/hw/Ventilation system/DHT22.cpp"
-    "src/hw/Ventilation system/Motor.cpp"
-    "src/hw/Watering system/PlantBox.cpp"
+    "src/hw/ClimateControl/DHT22.cpp"
+    "src/hw/ClimateControl/Motor.cpp"
+    "src/hw/WateringSystem/PlantBox.cpp"
+)
+
+# Keep HW source untouched: compile this file with unsigned char semantics
+# so byte literals like 0xC3/0x83 are valid on platforms with signed char.
+set_source_files_properties(
+    "src/hw/WateringSystem/PlantBox.cpp"
+    PROPERTIES COMPILE_OPTIONS "-funsigned-char"
 )
 
 target_link_libraries(miljoestyring PRIVATE gpiodcxx gpiod)

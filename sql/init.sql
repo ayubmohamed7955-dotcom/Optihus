@@ -29,7 +29,6 @@ CREATE INDEX IF NOT EXISTS idx_system_events_timestamp ON system_events(timestam
 CREATE TABLE IF NOT EXISTS profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    crop_type TEXT NOT NULL,
     min_humidity_air REAL NOT NULL,
     max_humidity_air REAL NOT NULL,
     min_humidity_soil REAL NOT NULL,
@@ -71,8 +70,6 @@ CREATE TABLE IF NOT EXISTS plant_boxes (
     is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
     is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
     min_soil_pct REAL NOT NULL DEFAULT 20,
-    max_soil_pct REAL NOT NULL DEFAULT 100,
-    pump_duration_sec INTEGER NOT NULL DEFAULT 1,
     hysteresis_sec INTEGER NOT NULL DEFAULT 30,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -88,17 +85,17 @@ SELECT 1, '1970-01-01T00:00:00Z', 'auto', '', 60, 0, 0, 0
 WHERE NOT EXISTS (SELECT 1 FROM active_config WHERE id = 1);
 
 INSERT OR IGNORE INTO profiles (
-    name, crop_type,
+    name,
     min_humidity_air, max_humidity_air, min_humidity_soil, max_humidity_soil,
     min_temp_c, max_temp_c, interval_sec, is_default, created_at, updated_at
 ) VALUES
-    ('tomato', 'tomato', 55.0, 75.0, 35.0, 60.0, 18.0, 26.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
-    ('cucumber', 'cucumber', 60.0, 85.0, 45.0, 70.0, 20.0, 28.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
-    ('peberfrugt', 'peberfrugt', 50.0, 70.0, 30.0, 55.0, 22.0, 30.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z');
+    ('tomat', 60.0, 70.0, 35.0, 60.0, 20.0, 25.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
+    ('agurk', 70.0, 80.0, 45.0, 70.0, 22.0, 25.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'),
+    ('peberfrugt', 60.0, 75.0, 30.0, 55.0, 22.0, 24.0, 60, 1, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z');
 
 INSERT INTO plant_boxes (
-    label, slot, is_active, is_default, min_soil_pct, max_soil_pct, pump_duration_sec,
+    label, slot, is_active, is_default, min_soil_pct,
     hysteresis_sec, created_at, updated_at
 )
-SELECT 'Plantekasse 1', 1, 0, 1, 20, 100, 1, 30, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
+SELECT 'Plantekasse 1', 1, 0, 1, 20, 30, '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
 WHERE NOT EXISTS (SELECT 1 FROM plant_boxes);

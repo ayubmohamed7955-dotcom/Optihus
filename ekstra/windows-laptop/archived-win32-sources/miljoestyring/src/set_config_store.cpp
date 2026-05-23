@@ -87,7 +87,7 @@ bool save_document(const nlohmann::json& doc) {
     }
 }
 
-} // namespace
+}
 
 bool persist_field_config_after_set_config(const nlohmann::json& params, bool emergency_halt_runtime) {
     nlohmann::json doc;
@@ -143,4 +143,4 @@ std::optional<nlohmann::json> load_field_config_for_replay() {
     return merged;
 }
 
-} // namespace miljoestyring
+}

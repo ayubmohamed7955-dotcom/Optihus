@@ -1,3 +1,4 @@
+
 #ifndef DHT22_SENSOR_HPP
 #define DHT22_SENSOR_HPP
 

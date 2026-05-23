@@ -1,3 +1,4 @@
+
 #include "shared/message_codec.hpp"
 
 #include <string>
@@ -6,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "shared/time_utils.hpp"
+
 
 std::string message_type_to_string(MessageType type) {
     switch (type) {
@@ -53,6 +55,8 @@ MessageType message_type_from_string(std::string_view type) {
     }
     return MessageType::Unknown;
 }
+
+
 
 nlohmann::json to_json_obj(const HelloPayload& payload) {
     return nlohmann::json {
@@ -146,6 +150,7 @@ std::optional<AckPayload> ack_from_json(const nlohmann::json& j) {
     return payload;
 }
 
+
 std::string encode_json_line(const MessageEnvelope& message) {
     nlohmann::json j;
     j["type"] = message_type_to_string(message.type);
@@ -163,6 +168,8 @@ std::string encode_json_line(const MessageEnvelope& message) {
 }
 
 std::optional<MessageEnvelope> decode_json_line(std::string_view line) {
+
+
     try {
         const auto j = nlohmann::json::parse(std::string(line));
         MessageEnvelope message;

@@ -1,3 +1,4 @@
+
 #include "tcp_client.hpp"
 
 #include <cerrno>
@@ -17,6 +18,7 @@
 #include "shared/time_utils.hpp"
 
 #include <nlohmann/json.hpp>
+
 
 static std::string last_socket_error() {
     return std::strerror(errno);
@@ -39,6 +41,8 @@ void TcpClient::stop_reader() {
 }
 
 bool TcpClient::connect() {
+
+
     if (is_connected()) {
         return true;
     }
@@ -119,6 +123,7 @@ void TcpClient::start_reader(ThreadSafeQueue<MessageEnvelope>& inbound) {
 
 void TcpClient::read_loop() {
     char chunk[1024];
+
     while (reader_run_.load() && is_connected()) {
         const ssize_t n = recv(socket_fd_, chunk, sizeof(chunk), 0);
         if (n <= 0) {
@@ -153,6 +158,8 @@ void TcpClient::read_loop() {
 }
 
 bool TcpClient::send_telemetry(const TelemetrySample& sample) {
+
+
     TelemetryPayload telemetry;
     telemetry.temperature_c = sample.temperature_c;
     telemetry.humidity_air = sample.humidity_air;

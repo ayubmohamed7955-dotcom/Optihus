@@ -2,7 +2,7 @@
 
 Klientdelen af Optihus: TCP-mod `datahaandtering`, JSON-linjer som i `MessageEnvelope`.
 
-**Mappe til headers:** `miljoestyring/include/` (f.eks. `app.hpp`, `tcp_client.hpp`). Under `include/hw/Watering system/` ligger `PlantBox.hpp` / `PlantBox.cpp` (jordfugt + pumpe); under `include/hw/Ventilation system/` ligger `DHT22.*` og `Motor.hpp` / `Motor.cpp` (luft temp/fugt via IIO + stepper‑vindue); tilsvarende under `src/hw/`.
+**Mappe til headers:** `miljoestyring/include/` (f.eks. `app.hpp`, `tcp_client.hpp`). Under `include/hw/WateringSystem/` ligger `PlantBox.hpp` / `PlantBox.cpp` (jordfugt + pumpe); under `include/hw/ClimateControl/` ligger `DHT22.*` og `Motor.hpp` / `Motor.cpp` (luft temp/fugt via IIO + stepper‑vindue); tilsvarende under `src/hw/`.
 
 ## Hvad den gør
 
@@ -38,7 +38,7 @@ Det **kan være vigtigt**, afhængigt af hvordan I læser sensoren:
 - Partner‑teksten brugte eksempelvis GPIO **17** i README, mens deres **`Motor.cpp`** brugte **24**; det er et klassisk “to kilder”-mismatch — ret efter jeres rigtige wiring.
 - Hvis I **ikke** bruger overlay/IIO og læser sensoren anderledes, er `config.txt`‑trinnet irrelevant for den sti (men så skal `DHT22.cpp`‑læsningen også matche den metode).
 
-- **`DHT22`** (`DHT22.hpp` / `DHT22.cpp` i **Ventilation system**): luft temp/fugt (IIO sysfs, som i partner‑zip) — bruges af **`Motor`** (`DHT22 sensor(...)` i `runLoop`).
+- **`DHT22`** (`DHT22.hpp` / `DHT22.cpp` i **ClimateControl**): luft temp/fugt (IIO sysfs, som i partner‑zip) — bruges af **`Motor`** (`DHT22 sensor(...)` i `runLoop`).
 - **`Motor`** (`Motor.hpp` / `Motor.cpp`): stepper + klima‑regulering (vinduet), samme kernelogik som partner‑zip’s `Motor`.
 - **`PlantBox`** (`PlantBox.hpp` / `PlantBox.cpp`): jordfugt via **I2C** @ `0x48`, pumpe via `pinctrl`, samme kernelogik som partner‑zip’s `PlantBox` — API blandt andet `setMinimumThreshold`, `getCurrentAverageMoisture`; `max_soil_pct`, `pump_duration_sec` og `hysteresis_sec` fra server styrer **ikke** pumpecyklussen (kun `min_soil_pct`/`setMinimumThreshold` ved denne hardwareprofil).
 

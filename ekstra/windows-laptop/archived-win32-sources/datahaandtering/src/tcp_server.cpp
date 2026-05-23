@@ -206,7 +206,7 @@ void TcpServer::stop_session_locked() {
 #endif
     }
 
-    // Wake write_loop if blocked in wait_pop.
+
     outbound_queue_.push(make_message(MessageType::Event, "datahaandtering"));
 
     if (read_thread_.joinable()) {

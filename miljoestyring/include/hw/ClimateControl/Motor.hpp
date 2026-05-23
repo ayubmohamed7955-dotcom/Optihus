@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <gpiod.hpp>
@@ -20,7 +21,7 @@ public:
     void open();
     void close();
 
-    // Starter en thread der løbende læser sensor og styrer vindue
+
     void start();
     void stop();
 
@@ -32,7 +33,7 @@ public:
 
     bool isWindowOpen() const;
 
-    /** false ved levering/opstart: loop læser stadig sensor; vinduesmotor kører først når Optihus sætter true efter server-konfiguration. */
+
     void setActuationEnabled(bool enabled);
     bool isActuationEnabled() const { return actuation_enabled_.load(std::memory_order_relaxed); }
     bool isRunning() const { return running_.load(std::memory_order_relaxed); }

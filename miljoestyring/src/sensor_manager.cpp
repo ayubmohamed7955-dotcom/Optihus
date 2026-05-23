@@ -1,7 +1,8 @@
+
 #include "sensor_manager.hpp"
 
-#include "hw/Ventilation system/Motor.hpp"
-#include "hw/Watering system/PlantBox.hpp"
+#include "hw/ClimateControl/Motor.hpp"
+#include "hw/WateringSystem/PlantBox.hpp"
 #include "shared/logger.hpp"
 #include "shared/time_utils.hpp"
 
@@ -25,7 +26,7 @@ TelemetrySample SensorManager::read_sample(const ClientRuntimeState* runtime) co
     sample.temperature_c = static_cast<double>(motor_->getCurrentTemp());
     sample.humidity_air = static_cast<double>(motor_->getCurrentHumid());
     sample.humidity_soil = static_cast<double>(plant_box_->getCurrentAverageMoisture());
-    // Kortvarige pump-events håndteres nu i app.cpp via immediate telemetry ved statusskift.
+
     sample.pump_status = plant_box_->isPumpOn() ? "on" : "off";
     sample.motor_status = motor_->isWindowOpen() ? "open" : "closed";
     if (runtime != nullptr && runtime->emergency_halt.load()) {

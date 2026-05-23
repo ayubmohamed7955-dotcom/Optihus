@@ -88,8 +88,8 @@ Heri indgår blandt andet:
 
 ### 4.2 Hardware og kontrol (kort)
 
-- **`Motor`** (`include/hw/Ventilation system/`, `libgpiod`): baggrundstråd læser luft temp/fugt via **`DHT22::update()`** (sysfs **IIO** under `/sys/bus/iio/.../iio:device0/`). **`setActuationEnabled`**: false indtil **`set_config`** uden aktiv nødstop — så kan stepper åbne/lukke vindue efter grænser fra **`temp_bounds_c`** / **`bounds`**.
-- **`PlantBox`** (`include/hw/Watering system/`): I2C **`/dev/i2c-1`**, **`0x48`**; pumpe via **`pinctrl`**; **`setActuationEnabled`** styrer om vanding må køre (fail‑safe / pre‑konfiguration).
+- **`Motor`** (`include/hw/ClimateControl/`, `libgpiod`): baggrundstråd læser luft temp/fugt via **`DHT22::update()`** (sysfs **IIO** under `/sys/bus/iio/.../iio:device0/`). **`setActuationEnabled`**: false indtil **`set_config`** uden aktiv nødstop — så kan stepper åbne/lukke vindue efter grænser fra **`temp_bounds_c`** / **`bounds`**.
+- **`PlantBox`** (`include/hw/WateringSystem/`): I2C **`/dev/i2c-1`**, **`0x48`**; pumpe via **`pinctrl`**; **`setActuationEnabled`** styrer om vanding må køre (fail‑safe / pre‑konfiguration).
 - **`ControlManager`**: **`set_config`** (interval, grænser, plant_boxes, **`persist_field_config_after_set_config`**); **`emergency_stop`** / **`clear_emergency_stop`** med **`persist_field_config_emergency_overlay`** når cachefil findes.
 - **`SensorManager`**: bygger **`TelemetrySample`** (bl.a. **`pump_status`**, **`motor_status`**, valgfri **`field_live_json`** til web‑**`field_node`**).
 
