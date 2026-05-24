@@ -964,7 +964,18 @@ bool DatabaseManager::apply_factory_defaults() {
         Profile {"agurk", 70.0, 80.0, 45.0, 70.0, 22.0, 25.0, 60, true},
         Profile {"peberfrugt", 60.0, 75.0, 30.0, 55.0, 22.0, 24.0, 60, true},
     };
-    const char* profile_sql =
+    const bool has_crop_type = profiles_has_column(db_, "crop_type");
+    const char* profile_sql_with_crop_type =
+        "INSERT INTO profiles(name, crop_type, min_humidity_air, max_humidity_air, "
+        "min_humidity_soil, max_humidity_soil, min_temp_c, max_temp_c, interval_sec, "
+        "is_default, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET "
+        "crop_type=excluded.crop_type, "
+        "min_humidity_air=excluded.min_humidity_air, max_humidity_air=excluded.max_humidity_air, "
+        "min_humidity_soil=excluded.min_humidity_soil, max_humidity_soil=excluded.max_humidity_soil, "
+        "min_temp_c=excluded.min_temp_c, max_temp_c=excluded.max_temp_c, interval_sec=excluded.interval_sec, "
+        "is_default=1, updated_at=excluded.updated_at;";
+    const char* profile_sql_without_crop_type =
         "INSERT INTO profiles(name, min_humidity_air, max_humidity_air, "
         "min_humidity_soil, max_humidity_soil, min_temp_c, max_temp_c, interval_sec, "
         "is_default, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) "
@@ -973,22 +984,30 @@ bool DatabaseManager::apply_factory_defaults() {
         "min_humidity_soil=excluded.min_humidity_soil, max_humidity_soil=excluded.max_humidity_soil, "
         "min_temp_c=excluded.min_temp_c, max_temp_c=excluded.max_temp_c, interval_sec=excluded.interval_sec, "
         "is_default=1, updated_at=excluded.updated_at;";
+    const char* profile_sql = has_crop_type ? profile_sql_with_crop_type : profile_sql_without_crop_type;
     for (const auto& profile : defaults) {
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db_, profile_sql, -1, &stmt, nullptr) != SQLITE_OK) {
             return false;
         }
-        bind_text(stmt, 1, profile.name);
-        sqlite3_bind_double(stmt, 2, profile.min_humidity_air);
-        sqlite3_bind_double(stmt, 3, profile.max_humidity_air);
-        sqlite3_bind_double(stmt, 4, profile.min_humidity_soil);
-        sqlite3_bind_double(stmt, 5, profile.max_humidity_soil);
-        sqlite3_bind_double(stmt, 6, profile.min_temp_c);
-        sqlite3_bind_double(stmt, 7, profile.max_temp_c);
-        sqlite3_bind_int(stmt, 8, profile.interval_sec);
-        bind_text(stmt, 9, now);
-        bind_text(stmt, 10, now);
+        int bind_i = 1;
+        bind_text(stmt, bind_i++, profile.name);
+        if (has_crop_type) {
+            bind_text(stmt, bind_i++, profile.name);
+        }
+        sqlite3_bind_double(stmt, bind_i++, profile.min_humidity_air);
+        sqlite3_bind_double(stmt, bind_i++, profile.max_humidity_air);
+        sqlite3_bind_double(stmt, bind_i++, profile.min_humidity_soil);
+        sqlite3_bind_double(stmt, bind_i++, profile.max_humidity_soil);
+        sqlite3_bind_double(stmt, bind_i++, profile.min_temp_c);
+        sqlite3_bind_double(stmt, bind_i++, profile.max_temp_c);
+        sqlite3_bind_int(stmt, bind_i++, profile.interval_sec);
+        bind_text(stmt, bind_i++, now);
+        bind_text(stmt, bind_i++, now);
         const bool step_ok = sqlite3_step(stmt) == SQLITE_DONE;
+        if (!step_ok) {
+            log_error("database_manager", "Factory defaults profile upsert failed: " + std::string(sqlite3_errmsg(db_)));
+        }
         sqlite3_finalize(stmt);
         if (!step_ok) {
             return false;
@@ -1015,6 +1034,9 @@ bool DatabaseManager::apply_factory_defaults() {
         bind_text(stmt, 5, now);
         bind_text(stmt, 6, now);
         const bool step_ok = sqlite3_step(stmt) == SQLITE_DONE;
+        if (!step_ok) {
+            log_error("database_manager", "Factory defaults plant_box upsert failed: " + std::string(sqlite3_errmsg(db_)));
+        }
         sqlite3_finalize(stmt);
         if (!step_ok) {
             return false;
@@ -1023,7 +1045,7 @@ bool DatabaseManager::apply_factory_defaults() {
 
     ActiveConfig cfg;
     cfg.mode = Mode::Auto;
-    cfg.profile_name = "";
+    cfg.profile_name = "tomat";
     cfg.interval_sec = 60;
     cfg.emergency_stop = false;
     cfg.ventilation_enabled = false;
