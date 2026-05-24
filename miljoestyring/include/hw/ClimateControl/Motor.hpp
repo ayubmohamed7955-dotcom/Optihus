@@ -53,7 +53,7 @@ private:
     std::atomic<float> currentTemp_{0.0f};
     std::atomic<float> currentHumid_{0.0f};
 
-    bool isOpen_ = false;
+    std::atomic<bool> isOpen_ {false};
     bool shouldOpen = false;
 
     std::atomic<bool> actuation_enabled_{false};

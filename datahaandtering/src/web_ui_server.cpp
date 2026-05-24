@@ -824,6 +824,9 @@ std::string WebUiServer::build_status_json() const {
     const bool client_ok = tcp_server_.is_client_connected();
     const bool queue_matches_active = profiles_match && last_set_queued_ok && !last_set_csv.empty();
     const bool delivery_ok = queue_matches_active && client_ok;
+    const bool field_node_has_telemetry = !last_field_live_ts.empty() && last_field_live_ts != "never";
+    const bool field_node_up_to_date_for_last_set =
+        !last_set_ts.empty() && field_node_has_telemetry && last_field_live_ts >= last_set_ts;
     std::string delivery_hint;
     if (last_set_csv.empty()) {
         delivery_hint = "Ingen set_config endnu siden serverstart.";
@@ -833,8 +836,12 @@ std::string WebUiServer::build_status_json() const {
         delivery_hint = "Sidste set_config kom ikke i send-koeen.";
     } else if (!client_ok) {
         delivery_hint = "Sidste set_config matcher gemt aktiv konfiguration; klient er frakoblet (besked ligger klar i koeen).";
+    } else if (!field_node_has_telemetry) {
+        delivery_hint = "set_config er sendt; afventer field_node telemetri fra Pi 2.";
+    } else if (!field_node_up_to_date_for_last_set) {
+        delivery_hint = "set_config er sendt; afventer ny Pi 2 telemetri med opdateret field_node-status.";
     } else {
-        delivery_hint = "Profilvalg matcher sidste set_config i koe (hardware kvitterer ikke herfra).";
+        delivery_hint = "Pi 2 field_node er opdateret efter sidste set_config.";
     }
 
     std::string field_node_body;
@@ -871,6 +878,9 @@ std::string WebUiServer::build_status_json() const {
            "  },\n"
            "  \"config_queue_matches_active\": " + std::string(queue_matches_active ? "true" : "false") + ",\n"
            "  \"config_delivery_ok\": " + std::string(delivery_ok ? "true" : "false") + ",\n"
+           "  \"field_node_up_to_date_for_last_set_config\": "
+           + std::string(field_node_up_to_date_for_last_set ? "true" : "false")
+           + ",\n"
            "  \"config_delivery_hint\": \"" + web_ui_json_escape(delivery_hint) + "\",\n"
            "  \"field_node\": {\n"
            "    " +

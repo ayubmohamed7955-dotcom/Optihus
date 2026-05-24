@@ -3,6 +3,7 @@
 
 #include "hw/board_pins.hpp"
 #include "hw/ClimateControl/DHT22.hpp"
+#include "shared/logger.hpp"
 #include <unistd.h>
 #include <iostream>
 #include <chrono>
@@ -84,7 +85,7 @@ float Motor::getCurrentHumid() const {
 }
 
 bool Motor::isWindowOpen() const {
-    return isOpen_;
+    return isOpen_.load(std::memory_order_relaxed);
 }
 
 void Motor::setActuationEnabled(bool enabled) {
@@ -107,35 +108,39 @@ void Motor::runLoop() {
         currentTemp_.store(temp);
         currentHumid_.store(humidity);
 
-        std::cout << "Temp: " << temp << " C, Fugt: " << humidity << " %" << std::endl;
-
         if (actuation_enabled_.load(std::memory_order_relaxed)) {
             const float tempMin = tempMinLimit_.load();
             const float tempMax = tempMaxLimit_.load();
             const float humidityMin = humidityMinLimit_.load();
             const float humidityMax = humidityMaxLimit_.load();
-
-            std::cout << temp << " temp\n";
-            std::cout << tempMax << " tempMax\n";
-            std::cout << shouldOpen << "\n";
-
-            if (humidity < humidityMin || temp < tempMin) {
-                std::cout << "shouldclose\n";
-                shouldOpen = false;
+            bool desiredOpen = shouldOpen;
+            if (humidity <= humidityMin || temp <= tempMin) {
+                desiredOpen = false;
             }
-
-            if (humidity > humidityMax || temp > tempMax) {
-                std::cout << "shouldopen\n";
-                shouldOpen = true;
+            if (humidity >= humidityMax || temp >= tempMax) {
+                desiredOpen = true;
             }
-            if (shouldOpen && !isOpen_) {
-                std::cout << "opening\n";
-                isOpen_ = true;
+            const bool wasOpen = isOpen_.load(std::memory_order_relaxed);
+            shouldOpen = desiredOpen;
+            if (shouldOpen && !wasOpen) {
+                log_info(
+                    "motor",
+                    "Opening window (temp=" + std::to_string(temp)
+                        + ", humidity=" + std::to_string(humidity)
+                        + ", limits temp=[" + std::to_string(tempMin) + "," + std::to_string(tempMax)
+                        + "] humidity=[" + std::to_string(humidityMin) + "," + std::to_string(humidityMax) + "])"
+                );
+                isOpen_.store(true, std::memory_order_relaxed);
                 open();
-            }
-            if (!shouldOpen && isOpen_) {
-                std::cout << "closing\n";
-                isOpen_ = false;
+            } else if (!shouldOpen && wasOpen) {
+                log_info(
+                    "motor",
+                    "Closing window (temp=" + std::to_string(temp)
+                        + ", humidity=" + std::to_string(humidity)
+                        + ", limits temp=[" + std::to_string(tempMin) + "," + std::to_string(tempMax)
+                        + "] humidity=[" + std::to_string(humidityMin) + "," + std::to_string(humidityMax) + "])"
+                );
+                isOpen_.store(false, std::memory_order_relaxed);
                 close();
             }
         }
@@ -165,11 +170,9 @@ void Motor::runSteps(int steps) {
 }
 
 void Motor::open() {
-    std::cout << "Åbner vindue..." << std::endl;
     runSteps(STEPS_PER_REV);
 }
 
 void Motor::close() {
-    std::cout << "Lukker vindue..." << std::endl;
     runSteps(-STEPS_PER_REV);
 }

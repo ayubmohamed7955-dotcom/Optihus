@@ -184,29 +184,32 @@ int App::run() {
 
 
 
-    auto process_inbound = [&]() {
+    auto process_inbound = [&]() -> bool {
+        bool handled_any = false;
         for (;;) {
             const auto msg = inbound.try_pop();
             if (!msg.has_value()) {
                 break;
             }
             control_manager.apply_inbound_message(*msg, runtime, &motor, &plant_box);
+            handled_any = true;
         }
+        return handled_any;
     };
 
     std::string last_pump_status;
     std::string last_motor_status;
 
-    auto send_enriched_telemetry = [&](bool status_change_event) -> bool {
+    auto send_enriched_telemetry = [&](bool immediate_triggered) -> bool {
         TelemetrySample enriched = sensor_manager.read_sample(&runtime);
         enriched.field_live_json = build_field_live_json(client, runtime, motor, plant_box);
         if (!client.send_telemetry(enriched)) {
             return false;
         }
-        if (status_change_event) {
+        if (immediate_triggered) {
             log_info(
                 "miljoestyring",
-                "Sent immediate telemetry on status change (pump="
+                "Sent immediate telemetry update (pump="
                     + enriched.pump_status
                     + ", motor="
                     + enriched.motor_status
@@ -226,7 +229,14 @@ int App::run() {
             reconnect();
         }
 
-        process_inbound();
+        const bool handled_now = process_inbound();
+        if (handled_now) {
+            if (!send_enriched_telemetry(true)) {
+                log_warn("miljoestyring", "Telemetry send failed after inbound command. Reconnecting...");
+                reconnect();
+                continue;
+            }
+        }
 
         if (!send_enriched_telemetry(false)) {
             log_warn("miljoestyring", "Telemetry send failed. Reconnecting...");
@@ -236,10 +246,17 @@ int App::run() {
 
         const int sleep_sec = runtime.telemetry_interval_sec.load();
         const int bounded_sleep = std::max(1, sleep_sec);
-        constexpr int kInboundPollStepMs = 200;
+        constexpr int kInboundPollStepMs = 20;
         const int total_wait_ms = bounded_sleep * 1000;
         for (int waited_ms = 0; waited_ms < total_wait_ms; waited_ms += kInboundPollStepMs) {
-            process_inbound();
+            const bool handled_during_wait = process_inbound();
+            if (handled_during_wait) {
+                if (!send_enriched_telemetry(true)) {
+                    log_warn("miljoestyring", "Telemetry send failed after inbound command during wait. Reconnecting...");
+                    reconnect();
+                    break;
+                }
+            }
             if (!client.is_connected() || !client.is_reader_running()) {
                 log_warn("miljoestyring", "Connection lost during wait. Reconnecting...");
                 reconnect();
