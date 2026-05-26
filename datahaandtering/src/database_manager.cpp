@@ -398,7 +398,18 @@ bool DatabaseManager::upsert_profile(const Profile& profile, const std::string& 
         return false;
     }
 
-    const char* sql =
+    const bool has_crop_type = profiles_has_column(db_, "crop_type");
+    const char* sql_with_crop_type =
+        "INSERT INTO profiles(name, crop_type, min_humidity_air, max_humidity_air, min_humidity_soil, "
+        "max_humidity_soil, min_temp_c, max_temp_c, interval_sec, is_default, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET "
+        "crop_type=excluded.crop_type, min_humidity_air=excluded.min_humidity_air, "
+        "max_humidity_air=excluded.max_humidity_air, min_humidity_soil=excluded.min_humidity_soil, "
+        "max_humidity_soil=excluded.max_humidity_soil, min_temp_c=excluded.min_temp_c, "
+        "max_temp_c=excluded.max_temp_c, interval_sec=excluded.interval_sec, "
+        "is_default=excluded.is_default, updated_at=excluded.updated_at;";
+    const char* sql_without_crop_type =
         "INSERT INTO profiles(name, min_humidity_air, max_humidity_air, min_humidity_soil, "
         "max_humidity_soil, min_temp_c, max_temp_c, interval_sec, is_default, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
@@ -408,25 +419,33 @@ bool DatabaseManager::upsert_profile(const Profile& profile, const std::string& 
         "max_humidity_soil=excluded.max_humidity_soil, min_temp_c=excluded.min_temp_c, "
         "max_temp_c=excluded.max_temp_c, interval_sec=excluded.interval_sec, "
         "is_default=excluded.is_default, updated_at=excluded.updated_at;";
+    const char* sql = has_crop_type ? sql_with_crop_type : sql_without_crop_type;
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
     }
 
-    bind_text(stmt, 1, profile.name);
-    sqlite3_bind_double(stmt, 2, profile.min_humidity_air);
-    sqlite3_bind_double(stmt, 3, profile.max_humidity_air);
-    sqlite3_bind_double(stmt, 4, profile.min_humidity_soil);
-    sqlite3_bind_double(stmt, 5, profile.max_humidity_soil);
-    sqlite3_bind_double(stmt, 6, profile.min_temp_c);
-    sqlite3_bind_double(stmt, 7, profile.max_temp_c);
-    sqlite3_bind_int(stmt, 8, profile.interval_sec);
-    sqlite3_bind_int(stmt, 9, profile.is_default ? 1 : 0);
-    bind_text(stmt, 10, timestamp_utc);
-    bind_text(stmt, 11, timestamp_utc);
+    int bind_i = 1;
+    bind_text(stmt, bind_i++, profile.name);
+    if (has_crop_type) {
+        bind_text(stmt, bind_i++, profile.name);
+    }
+    sqlite3_bind_double(stmt, bind_i++, profile.min_humidity_air);
+    sqlite3_bind_double(stmt, bind_i++, profile.max_humidity_air);
+    sqlite3_bind_double(stmt, bind_i++, profile.min_humidity_soil);
+    sqlite3_bind_double(stmt, bind_i++, profile.max_humidity_soil);
+    sqlite3_bind_double(stmt, bind_i++, profile.min_temp_c);
+    sqlite3_bind_double(stmt, bind_i++, profile.max_temp_c);
+    sqlite3_bind_int(stmt, bind_i++, profile.interval_sec);
+    sqlite3_bind_int(stmt, bind_i++, profile.is_default ? 1 : 0);
+    bind_text(stmt, bind_i++, timestamp_utc);
+    bind_text(stmt, bind_i++, timestamp_utc);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    if (!ok) {
+        log_error("database_manager", "upsert_profile failed: " + std::string(sqlite3_errmsg(db_)));
+    }
     sqlite3_finalize(stmt);
     return ok;
 }

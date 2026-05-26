@@ -16,6 +16,7 @@
 #include "shared/thread_safe_queue.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -184,18 +185,18 @@ int App::run() {
 
 
 
-    auto process_inbound = [&]() -> bool {
-        bool handled_any = false;
+    std::atomic<bool> command_update_pending {false};
+    std::thread command_thread([&]() {
         for (;;) {
-            const auto msg = inbound.try_pop();
+            const auto msg = inbound.wait_pop();
             if (!msg.has_value()) {
-                break;
+                continue;
             }
             control_manager.apply_inbound_message(*msg, runtime, &motor, &plant_box);
-            handled_any = true;
+            command_update_pending.store(true, std::memory_order_relaxed);
         }
-        return handled_any;
-    };
+    });
+    command_thread.detach();
 
     std::string last_pump_status;
     std::string last_motor_status;
@@ -229,8 +230,7 @@ int App::run() {
             reconnect();
         }
 
-        const bool handled_now = process_inbound();
-        if (handled_now) {
+        if (command_update_pending.exchange(false, std::memory_order_relaxed)) {
             if (!send_enriched_telemetry(true)) {
                 log_warn("miljoestyring", "Telemetry send failed after inbound command. Reconnecting...");
                 reconnect();
@@ -249,8 +249,7 @@ int App::run() {
         constexpr int kInboundPollStepMs = 20;
         const int total_wait_ms = bounded_sleep * 1000;
         for (int waited_ms = 0; waited_ms < total_wait_ms; waited_ms += kInboundPollStepMs) {
-            const bool handled_during_wait = process_inbound();
-            if (handled_during_wait) {
+            if (command_update_pending.exchange(false, std::memory_order_relaxed)) {
                 if (!send_enriched_telemetry(true)) {
                     log_warn("miljoestyring", "Telemetry send failed after inbound command during wait. Reconnecting...");
                     reconnect();
