@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
--- All timestamps are stored as ISO-8601 UTC text (example: 2026-05-01T16:40:00Z).
+
 
 CREATE TABLE IF NOT EXISTS telemetry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
